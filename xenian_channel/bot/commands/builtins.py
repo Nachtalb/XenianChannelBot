@@ -1,7 +1,10 @@
-from telegram import Bot, Update
+from typing import Iterable, Dict
+
+from telegram import Bot, Update, Chat
 from telegram.ext import CommandHandler, MessageHandler
 from telegram.parsemode import ParseMode
 
+from xenian_channel.bot import mongodb_database
 from xenian_channel.bot.settings import ADMINS, SUPPORTER
 from xenian_channel.bot.utils import get_user_link, render_template
 from .base import BaseCommand
@@ -22,20 +25,23 @@ class Builtins(BaseCommand):
             {'command': self.commands, 'description': 'Show all available commands', 'options': {'pass_args': True}},
             {'command_name': 'help', 'alias': 'commands'},
             {'command': self.support, 'description': 'Contact bot maintainer for support of any kind'},
-            # {'command': self.register, 'description': 'Register the chat_id for admins and supporters', 'hidden': True},
-            # {
-            #     'command': self.contribute,
-            #     'description': 'Send the supporters and admins a request of any kind',
-            #     'args': ['text']
-            # },
-            # {
-            #     'command': self.error,
-            #     'description': 'If you have found an error please use this command.',
-            #     'args': ['text']
-            # },
+            {'command': self.register, 'description': 'Register the chat_id for admins and supporters', 'hidden': True},
+            {
+                'command': self.contribute,
+                'description': 'Send the supporters and admins a request of any kind',
+                'args': ['text']
+            },
+            {
+                'command': self.error,
+                'description': 'If you have found an error please use this command.',
+                'args': ['text']
+            },
         ]
 
         super(Builtins, self).__init__()
+
+        self.admin_db = mongodb_database.admins
+        self.supporter_db = mongodb_database.supporter
 
     def start(self, bot: Bot, update: Update):
         """Initialize the bot
@@ -112,102 +118,103 @@ class Builtins(BaseCommand):
             'error please use "/error ERROR_DESCRIPTION".\n\nIf you like this bot you can give me rating here: '
             'https://telegram.me/storebot?start=xenianchannelbot'.format(SUPPORTER[0]))
 
-    # def contribute(self, bot: Bot, update: Update):
-    #     """User can use /contribute to let all supporter / admin know something
-    #
-    #     This should be used for feature requests or questions
-    #
-    #     Args:
-    #         bot (:obj:`telegram.bot.Bot`): Telegram Api Bot Object.
-    #         update (:obj:`telegram.update.Update`): Telegram Api Update Object
-    #     """
-    #     split_text = update.message.text.split(' ', 1)
-    #     if len(split_text) < 2:
-    #         update.message.reply_text('Please describe your request with "/contribute YOUR_DESCRIPTION"')
-    #         return
-    #
-    #     text = split_text[1]
-    #     admin_text = 'Contribution form {user}: {text}'.format(
-    #         user=get_user_link(update.message.from_user),
-    #         text=text,
-    #         parse_mode=ParseMode.MARKDOWN
-    #     )
-    #
-    #     self.write_admins(bot, admin_text)
-    #     self.write_supporters(bot, admin_text)
-    #
-    #     update.message.reply_text('I forwarded your request to the admins and supporters.')
+    def contribute(self, bot: Bot, update: Update):
+        """User can use /contribute to let all supporter / admin know something
 
-    # def error(self, bot: Bot, update: Update):
-    #     """User can use /error to let all supporter / admin know about a bug or something else which has gone wrong
-    #
-    #     Args:
-    #         bot (:obj:`telegram.bot.Bot`): Telegram Api Bot Object.
-    #         update (:obj:`telegram.update.Update`): Telegram Api Update Object
-    #     """
-    #     split_text = update.message.text.split(' ', 1)
-    #     if len(split_text) < 2:
-    #         update.message.reply_text('Please describe your issue with "/error YOUR_DESCRIPTION"')
-    #         return
-    #
-    #     text = split_text[1]
-    #     admin_text = 'Error form {user}: {text}'.format(
-    #         user=get_user_link(update.message.from_user),
-    #         text=text,
-    #         parse_mode=ParseMode.MARKDOWN
-    #     )
-    #
-    #     self.write_admins(bot, admin_text)
-    #     self.write_supporters(bot, admin_text)
-    #
-    #     update.message.reply_text('I forwarded your request to the admins and supporters.')
+        This should be used for feature requests or questions
 
-    # def write_admins(self, bot: Bot, text: str):
-    #     """Send a message to all admins
-    #
-    #     Args:
-    #         bot (:obj:`telegram.bot.Bot`): Telegram Api Bot Object.
-    #         text (:obj:`str`): Message to tell the admins
-    #     """
-    #     builtin_data = data.get(self.data_set_name)
-    #     if builtin_data.get('admin_chat_ids', None):
-    #         for name in builtin_data['admin_chat_ids']:
-    #             bot.send_message(chat_id=name, text=text)
+        Args:
+            bot (:obj:`telegram.bot.Bot`): Telegram Api Bot Object.
+            update (:obj:`telegram.update.Update`): Telegram Api Update Object
+        """
+        split_text = update.message.text.split(' ', 1)
+        if len(split_text) < 2:
+            update.message.reply_text('Please describe your request with "/contribute YOUR_DESCRIPTION"')
+            return
 
-    # def write_supporters(self, bot: Bot, text: str):
-    #     """Send a message to all supporters
-    #
-    #     Args:
-    #         bot (:obj:`telegram.bot.Bot`): Telegram Api Bot Object.
-    #         text (:obj:`str`): Message to tell the supporters
-    #     """
-    #     builtin_data = data.get(self.data_set_name)
-    #     if builtin_data.get('supporter_chat_ids', None):
-    #         for chat_id in builtin_data['supporter_chat_ids']:
-    #             bot.send_message(chat_id=chat_id, text=text)
+        text = split_text[1]
+        message_text = 'Contribution form {user}: {text}'.format(
+            user=get_user_link(update.message.from_user),
+            text=text,
+            parse_mode=ParseMode.MARKDOWN
+        )
 
-    # def register(self, bot: Bot, update: Update):
-    #     """Register the chat_id for admins and supporters
-    #
-    #     Args:
-    #         bot (:obj:`telegram.bot.Bot`): Telegram Api Bot Object.
-    #         update (:obj:`telegram.update.Update`): Telegram Api Update Object
-    #     """
-    #     user = update.message.from_user
-    #     chat_id = update.message.chat_id
-    #     builtin_data = data.get(self.data_set_name)
-    #
-    #     if '@{}'.format(user.username) in ADMINS:
-    #         if not builtin_data.get('admin_chat_ids', None):
-    #             builtin_data['admin_chat_ids'] = {}
-    #         builtin_data['admin_chat_ids'][chat_id] = user.to_dict()
-    #
-    #     if '@{}'.format(user.username) in SUPPORTER:
-    #         if not builtin_data.get('supporter_chat_ids', None):
-    #             builtin_data['supporter_chat_ids'] = {}
-    #         builtin_data['supporter_chat_ids'][chat_id] = user.to_dict()
-    #
-    #     data.save(self.data_set_name, builtin_data)
+        self.write_to_chats(bot, self.admin_db.find(), message_text)
+        self.write_to_chats(bot, self.supporter_db.find(), message_text)
+
+        update.message.reply_text('I forwarded your request to the admins and supporters.')
+
+    def error(self, bot: Bot, update: Update):
+        """User can use /error to let all supporter / admin know about a bug or something else which has gone wrong
+
+        Args:
+            bot (:obj:`telegram.bot.Bot`): Telegram Api Bot Object.
+            update (:obj:`telegram.update.Update`): Telegram Api Update Object
+        """
+        split_text = update.message.text.split(' ', 1)
+        if len(split_text) < 2:
+            update.message.reply_text('Please describe your issue with "/error YOUR_DESCRIPTION"')
+            return
+
+        text = split_text[1]
+        message_text = 'Error form {user}: {text}'.format(
+            user=get_user_link(update.message.from_user),
+            text=text,
+            parse_mode=ParseMode.MARKDOWN
+        )
+
+        self.write_to_chats(bot, self.admin_db.find(), message_text)
+        self.write_to_chats(bot, self.supporter_db.find(), message_text)
+
+        update.message.reply_text('I forwarded your request to the admins and supporters.')
+
+    @staticmethod
+    def write_to_chats(bot: Bot, chats: Iterable[Chat] or Iterable[Dict[str]], message: str):
+        """Send a message to all given chats
+
+        Args:
+            bot (:obj:`telegram.bot.Bot`): Telegram Api Bot Object.
+            chats (:obj:`Iterable[Chat]` | :obj:`Iterable[Dict[str]]`): A list of chats to write to
+            message (:obj:`str`): The text to send
+        """
+        for chat in chats:
+            id = None
+            if isinstance(chat, Chat):
+                id = chat.id
+            elif isinstance(chat, dict):
+                id = chat.get('id') or chat.get('chat_id')
+
+            if not id:
+                continue
+
+            bot.send_message(chat_id=id, text=message)
+
+    def register(self, bot: Bot, update: Update):
+        """Register the chat_id for admins and supporters
+
+        Args:
+            bot (:obj:`telegram.bot.Bot`): Telegram Api Bot Object.
+            update (:obj:`telegram.update.Update`): Telegram Api Update Object
+        """
+        user = update.message.from_user
+        chat_id = update.message.chat_id
+
+        data = {'chat_id': chat_id}
+
+        reply = 'You were registered as an'
+
+        if '@{}'.format(user.username) in ADMINS:
+            self.admin_db.update(data, data, upsert=True)
+            reply += '\n - Admin'
+
+        if '@{}'.format(user.username) in SUPPORTER:
+            self.supporter_db.update(data, data, upsert=True)
+            reply += '\n - Supporter'
+
+        if not '\n' in reply:
+            reply = 'You are neither an admin nor a supporter.'
+
+        update.message.reply_text(reply)
 
 
 builtins = Builtins()
