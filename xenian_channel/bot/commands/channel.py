@@ -221,7 +221,7 @@ class Channel(BaseCommand):
     @run_async
     def custom_echo_callback_query(self, bot: Bot, update: Update, text: str, callback: Callable,
                                    send_telegram_data: bool = False, *args, **kwargs):
-        """Debug method to send the users his state
+        """Echo something to the user after the given callback is run
 
         Args:
             bot (:obj:`telegram.bot.Bot`): Telegram Api Bot Object.
@@ -233,6 +233,24 @@ class Channel(BaseCommand):
         data_to_send = {'bot': bot, 'update': update} if send_telegram_data else {}
         callback(**data_to_send)
         update.effective_message.reply_text(text)
+
+    def set_state_and_run(self, user: User or int, state: str, callback: Callable, *args, **kwargs) -> Callable:
+        """Set the state and run the given function with bot, update, args and kwargs
+
+        Args:
+            user (:obj:`telegram.user.User` or :obj:`int`): Telegram Api User Object or user id
+            state (:obj:`str`): State to which the user shall changed to
+            callback (:obj:`Callable`): Callable to run before sending user the text
+
+        Returns:
+            :obj:`Callable`: Function which can be executes the given actions
+        """
+        @run_async
+        def wrapper(*wargs, **wkwargs):
+            self.set_user_state(user, state)
+            callback(*wargs, **wkwargs)
+
+        return wrapper
 
     # Adding Channels
     @run_async
@@ -309,7 +327,7 @@ class Channel(BaseCommand):
         buttons = [
             [
                 MagicButton(text=f'@{channel["username"]}',
-                            data=channel['id'],
+                            data={'chat_id': channel['id']},
                             callback=self.remove_channel_from_callback_query,
                             yes_no=True,
                             no_callback=self.remove_channel_start)
@@ -336,14 +354,18 @@ class Channel(BaseCommand):
         if self.get_user_state(user) != self.states.REMOVING_CHANNEL:
             update.effective_message.reply_text('Your remove request was cancelled due to starting another action')
             return
-        self.remove_channel(user=user, chat=data)
+
         self.set_user_state(user, self.states.IDLE)
+        if not self.remove_channel(user=user, chat=data):
+            update.effective_message.reply_text('An error occurred please try again')
+            return
+
         update.effective_message.reply_text('Channel was removed')
 
     def remove_channel(self, user: User or int, chat: Chat or int):
         chat_id = self.get_chat_id(chat)
         user_id = self.get_user_id(user)
-        self.channel_admin.delete_one({'channel_id': chat_id, 'user_id': user_id})
+        return self.channel_admin.delete_one({'channel_id': chat_id, 'user_id': user_id}).deleted_count
 
     # List Channels
     def list_channels(self, bot: Bot, update: Update, *args, **kwargs):
@@ -375,7 +397,11 @@ class Channel(BaseCommand):
 
         buttons = [
             [
-                MagicButton('Remove', self.remove_channel_from_callback_query, data=data, yes_no=True,
+                MagicButton('Remove',
+                            callback=self.set_state_and_run(user, self.states.REMOVING_CHANNEL,
+                                                            self.remove_channel_from_callback_query),
+                            data=data,
+                            yes_no=True,
                             no_callback=self.channel_actions)
             ],
             [
