@@ -5,3 +5,4 @@ Changelog
 ------------------
 
 - Copy source code from `@XenianChannelBot <https://github.com/Nachtalb/XenianChannelBot>`_ and strip it down
+- Improve alias commands

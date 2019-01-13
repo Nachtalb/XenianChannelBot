@@ -1,5 +1,5 @@
 import logging
-from copy import deepcopy
+from typing import Dict
 
 from telegram import Bot, Update
 from telegram.ext import CallbackQueryHandler, CommandHandler, Filters, MessageHandler
@@ -120,7 +120,7 @@ class BaseCommand:
             if not real_command:
                 continue
 
-            new_command = deepcopy(real_command)
+            new_command = self.copy_command(real_command)
             new_command['options']['command'] = alias_command['command_name']
             for key, value in alias_command.items():
                 if key in ['title', 'description', 'hidden', 'group', 'command_name']:
@@ -137,6 +137,28 @@ class BaseCommand:
                 ))
 
         self.commands = updated_commands
+
+    def copy_command(self, command: Dict) -> Dict:
+        """Copy command to a new dict
+
+        Do not use a single Dict.copy because the dicts are multidimensional and .copy i only onedimensional.
+        Do not use deepcopy because it copies functions to a new object which leads to errors
+
+        Instead we use copy the dict with its normal copy function and then iterate over the dict and repeat this for
+        every sub dict.
+
+        Args:
+            command (:obj:`Dict`): A command dict to copy
+
+        Returns:
+            :obj:`Dict`: The copied dict
+
+        """
+        new_command = command.copy()
+        for key, value in command.items():
+            if isinstance(value, Dict):
+                new_command[key] = self.copy_command(value)
+        return new_command
 
     def get_command_by_name(self, name: str) -> dict:
         """Returns a command form self.command with the given name
