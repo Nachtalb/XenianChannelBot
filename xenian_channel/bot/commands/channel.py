@@ -63,7 +63,7 @@ class Channel(BaseCommand):
             raise ValueError('user must not be empty')
         return user_id
 
-    def channels_belonging_to_user(self, user: User) -> Generator[Dict, None, None]:
+    def get_channels_of_user(self, user: User) -> Generator[Dict, None, None]:
         """Get all channels of which the user can interact with
 
         Args:
@@ -189,7 +189,7 @@ class Channel(BaseCommand):
         if not chat:
             update.message.reply_text('You have to send me a message from the channel.')
             return
-        elif chat.id in [channel['id'] for channel in self.channels_belonging_to_user(user)]:
+        elif chat.id in [channel['id'] for channel in self.get_channels_of_user(user)]:
             update.message.reply_text('You have already added this channel.')
             return
 
