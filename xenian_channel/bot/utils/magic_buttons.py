@@ -1,7 +1,7 @@
 from typing import Callable, Dict, List
 from uuid import uuid4
 
-from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup, Update, User
 from telegram.ext import run_async
 
 
@@ -10,6 +10,7 @@ class MagicButton:
 
     Attributes:
          text (:obj:`str`): Text represented inside the button
+         user (:obj:`telegram.user.User`): Telegram User obj
          callback (:obj:`Callable`): A method of self, which must accept at lest this arguments:
                 - bot: :obj:`telegram.bot.Bot`
                 - update: :obj:`telegram.update.Update`
@@ -31,6 +32,7 @@ class MagicButton:
 
     def __init__(self,
                  text: str,
+                 user: User,
                  callback: Callable,
                  callback_args: List = None,
                  callback_kwargs: Dict = None,
@@ -50,6 +52,7 @@ class MagicButton:
             name=f'Timout magic button: {self.id}')
 
         self.text = text
+        self.user = user
         self.data = data or {}
         self.url = url
         self.yes_no = yes_no
@@ -94,6 +97,22 @@ class MagicButton:
         data = self.to_dict()
         data.update(kwargs)
         return MagicButton(**data)
+
+    @staticmethod
+    def invalidate_by_user_id(user_id: int) -> List[str]:
+        invalidated = []
+        for key, button in MagicButton.all_buttons.copy().items():
+            if user_id == button.user.id:
+                del MagicButton.all_buttons[key]
+                invalidated.append(key)
+        return invalidated
+
+    @staticmethod
+    def invalidate_by_key(key: str) -> bool:
+        if key in MagicButton.all_buttons:
+            del MagicButton.all_buttons[key]
+            return True
+        return False
 
     def convert(self, button=None) -> InlineKeyboardButton:
         """Convert MagicButton into :obj:`telegram.inline.inlinekeyboardbutton.InlineKeyboardButton`

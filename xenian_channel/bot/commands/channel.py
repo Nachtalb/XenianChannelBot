@@ -8,7 +8,7 @@ from telegram.parsemode import ParseMode
 
 from xenian_channel.bot import mongodb_database
 from xenian_channel.bot.commands import database
-from xenian_channel.bot.settings import LOG_LEVEL
+from xenian_channel.bot.settings import ADMINS, LOG_LEVEL
 from xenian_channel.bot.utils import get_self
 from xenian_channel.bot.utils.magic_buttons import MagicButton
 from .base import BaseCommand
@@ -36,6 +36,12 @@ class Channel(BaseCommand):
             {'command': self.add_channel_start, 'command_name': 'addchannel', 'description': 'Add a channel'},
             {'command': self.remove_channel_start, 'command_name': 'removechannel', 'description': 'Remove a channel'},
             {'command': self.list_channels, 'command_name': 'list', 'description': 'List all channels'},
+            {
+                'command': self.invalidate,
+                'command_name': 'invalidate',
+                'description': 'Invalidate all buttons',
+                'hidden': True
+            },
             {
                 'command': self.echo_state,
                 'command_name': 'state',
@@ -219,6 +225,26 @@ class Channel(BaseCommand):
         self.set_user_state(update.effective_user, self.states.IDLE)
 
     @run_async
+    def invalidate(self, bot: Bot, update: Update, *args, **kwargs):
+        """Invalidate all open buttons
+
+        Args:
+            bot (:obj:`telegram.bot.Bot`): Telegram Api Bot Object.
+            update (:obj:`telegram.update.Update`): Telegram Api Update Object
+        """
+        user, message = update.effective_user, update.effective_message
+        split_text = message.text.split(' ', 1)
+        if len(split_text) > 1 and f'@{user.username}' in ADMINS:
+            username = split_text[1].strip('@')
+            user = database.users.find_one({'username': username})
+            if not user:
+                message.reply_text(f'User @{username    } could not be found')
+                return
+
+        MagicButton.invalidate_by_user_id(user['id'])
+        update.effective_message.reply_text('Invalidated all buttons')
+
+    @run_async
     def custom_echo_callback_query(self, bot: Bot, update: Update, text: str, callback: Callable,
                                    send_telegram_data: bool = False, *args, **kwargs):
         """Echo something to the user after the given callback is run
@@ -272,6 +298,7 @@ class Channel(BaseCommand):
         update.message.reply_text(text=add_to_channel_instruction, parse_mode=ParseMode.MARKDOWN)
         self.set_user_state(update.message.from_user, self.states.ADDING_CHANNEL)
 
+    @run_async
     def add_channel_from_message(self, bot: Bot, update: Update):
         """Add a channel to your channels
 
@@ -315,6 +342,7 @@ class Channel(BaseCommand):
         self.channel_admin.update(admin_data, admin_data, upsert=True)
 
     # Remove Channel
+    @run_async
     def remove_channel_start(self, bot: Bot, update: Update, *args, **kwargs):
         user = update.effective_user
         message = update.effective_message
@@ -327,6 +355,7 @@ class Channel(BaseCommand):
         buttons = [
             [
                 MagicButton(text=f'@{channel["username"]}',
+                            user=user,
                             data={'chat_id': channel['id']},
                             callback=self.remove_channel_from_callback_query,
                             yes_no=True,
@@ -337,6 +366,7 @@ class Channel(BaseCommand):
         ]
         buttons.append([
             MagicButton(text='Cancel', callback=self.custom_echo_callback_query,
+                        user=user,
                         callback_kwargs={
                             'text': 'Removing channel was cancelled',
                             'callback': self.reset_state,
@@ -349,6 +379,7 @@ class Channel(BaseCommand):
         message.reply_text(text=reply, reply_markup=real_buttons)
         self.set_user_state(user, self.states.REMOVING_CHANNEL)
 
+    @run_async
     def remove_channel_from_callback_query(self, bot: Bot, update: Update, data: str, *args, **kwargs):
         user = update.effective_user
         if self.get_user_state(user) != self.states.REMOVING_CHANNEL:
@@ -368,6 +399,7 @@ class Channel(BaseCommand):
         return self.channel_admin.delete_one({'chat_id': chat_id, 'user_id': user_id}).deleted_count
 
     # List Channels
+    @run_async
     def list_channels(self, bot: Bot, update: Update, *args, **kwargs):
         user, message = update.effective_user, update.effective_message
         self.set_user_state(user, self.states.IDLE)
@@ -380,6 +412,7 @@ class Channel(BaseCommand):
         buttons = [
             [
                 MagicButton(text=f'@{channel["username"]}',
+                            user=user,
                             data={'chat_id': channel['id']},
                             callback=self.channel_actions)
                 for channel in channels[index:index + 2]
@@ -391,6 +424,7 @@ class Channel(BaseCommand):
 
         message.reply_text(text='What do you want to do?', reply_markup=real_buttons)
 
+    @run_async
     def channel_actions(self, bot: Bot, update: Update, data: Dict, *args, **kwargs):
         user, message = update.effective_user, update.effective_message
         self.set_user_state(user, self.states.CHANNEL_ACTIONS)
@@ -400,12 +434,13 @@ class Channel(BaseCommand):
                 MagicButton('Remove',
                             callback=self.set_state_and_run(user, self.states.REMOVING_CHANNEL,
                                                             self.remove_channel_from_callback_query),
+                            user=user,
                             data=data,
                             yes_no=True,
                             no_callback=self.channel_actions)
             ],
             [
-                MagicButton('Cancel', self.list_channels)
+                MagicButton('Cancel', user=user, callback=self.list_channels)
             ]
         ]
 
