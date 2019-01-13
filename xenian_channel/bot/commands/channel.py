@@ -248,7 +248,7 @@ class Channel(BaseCommand):
             'reactions': [],
         }
         settings_to_save.update(default_settings)
-        settings_to_save.update(settings)
+        settings_to_save.update(settings or {})
         settings_to_save.update(query)
         self.channel_settings.update(query, settings_to_save, upsert=True)
 
