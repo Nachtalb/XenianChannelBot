@@ -1,13 +1,16 @@
+import logging
 from collections import namedtuple
-from typing import Generator, Dict
+from typing import Callable, Dict, Generator
 
 from telegram import Bot, Chat, Update, User
-from telegram.ext import MessageHandler, run_async
+from telegram.ext import CallbackQueryHandler, MessageHandler, run_async
 from telegram.parsemode import ParseMode
 
 from xenian_channel.bot import mongodb_database
 from xenian_channel.bot.commands import database
+from xenian_channel.bot.settings import LOG_LEVEL
 from xenian_channel.bot.utils import get_self
+from xenian_channel.bot.utils.magic_buttons import MagicButton
 from .base import BaseCommand
 
 __all__ = ['channel']
@@ -20,15 +23,36 @@ class Channel(BaseCommand):
     """
 
     name = 'Channel Manager'
+    group = 'Channel Manager'
 
     class states:
         IDLE = 'idle'
         ADDING_CHANNEL = 'adding channel'
+        REMOVING_CHANNEL = 'removing channel'
 
     def __init__(self):
         self.commands = [
-            {'command': self.add_channel_start, 'command_name': 'addchannel', 'title': 'Add a channel'},
-            {'command': self.echo_state, 'command_name': 'state', 'description': 'Debug - Show users current state'},
+            {'command': self.add_channel_start, 'command_name': 'addchannel', 'description': 'Add a channel'},
+            {'command': self.remove_channel_start, 'command_name': 'removechannel', 'description': 'Remove a channel'},
+            {
+                'command': self.echo_state,
+                'command_name': 'state',
+                'description': 'Debug - Show users current state',
+                'hidden': not (LOG_LEVEL == logging.DEBUG)
+            },
+            {
+                'command': self.reset_state,
+                'command_name': 'reset',
+                'description': 'Debug - Reset the users current state',
+                'hidden': not (LOG_LEVEL == logging.DEBUG)
+            },
+            {
+                'command': MagicButton.message_handler,
+                'handler': CallbackQueryHandler,
+                'options': {
+                    'pattern': '^magic_button:.*',
+                },
+            },
             # {'command': self.remove_channel, 'title': 'Add a channel'},
             # {'command': self.create_post, 'title': 'Add a channel'},
             # {'command': self.create_posts, 'title': 'Add a channel'},
@@ -62,6 +86,20 @@ class Channel(BaseCommand):
         if not user_id:
             raise ValueError('user must not be empty')
         return user_id
+
+    def get_chat_id(self, chat: Chat or int) -> int:
+        """Get the Chat id
+
+        Args:
+            chat (:obj:`telegram.user.User` | :obj:`int`): The telegram Chat as a Telegram object or the his id
+
+        Returns:
+            :obj:`str`: The chat int
+        """
+        chat_id = chat.id if isinstance(chat, Chat) else chat
+        if not chat_id:
+            raise ValueError('user must not be empty')
+        return chat_id
 
     def get_channels_of_user(self, user: User) -> Generator[Dict, None, None]:
         """Get all channels of which the user can interact with
@@ -140,7 +178,9 @@ class Channel(BaseCommand):
             bot (:obj:`telegram.bot.Bot`): Telegram Api Bot Object.
             update (:obj:`telegram.update.Update`): Telegram Api Update Object
         """
-        message = update.message
+        message = update.effective_message
+        if update.channel_post:
+            return
         user = message.from_user
 
         if self.get_user_state(user) == self.states.ADDING_CHANNEL:
@@ -155,6 +195,32 @@ class Channel(BaseCommand):
             update (:obj:`telegram.update.Update`): Telegram Api Update Object
         """
         update.message.reply_text(f'{self.get_user_state(update.message.from_user)}')
+
+    @run_async
+    def reset_state(self, bot: Bot, update: Update, *args, **kwargs):
+        """Debug method to send the users his state
+
+        Args:
+            bot (:obj:`telegram.bot.Bot`): Telegram Api Bot Object.
+            update (:obj:`telegram.update.Update`): Telegram Api Update Object
+        """
+        self.set_user_state(update.effective_user, self.states.IDLE)
+
+    @run_async
+    def custom_echo_callback_query(self, bot: Bot, update: Update, text: str, callback: Callable,
+                                   send_telegram_data: bool = False, *args, **kwargs):
+        """Debug method to send the users his state
+
+        Args:
+            bot (:obj:`telegram.bot.Bot`): Telegram Api Bot Object.
+            update (:obj:`telegram.update.Update`): Telegram Api Update Object
+            text (:obj:`str`): Text to send to user
+            callback (:obj:`Callable`): Callable to run before sending user the text
+            send_telegram_data (:obj:`bool`): If bot and update should be sent to the callback
+        """
+        data_to_send = {'bot': bot, 'update': update} if send_telegram_data else {}
+        callback(**data_to_send)
+        update.effective_message.reply_text(text)
 
     # Adding Channels
     @run_async
@@ -219,6 +285,55 @@ class Channel(BaseCommand):
         self.channel_admin.update(admin_data, admin_data, upsert=True)
 
     # Remove Channel
+    def remove_channel_start(self, bot: Bot, update: Update, *args, **kwargs):
+        user = update.effective_user
+        message = update.effective_message
+
+        channels = list(self.get_channels_of_user(user))
+        if not channels:
+            message.reply_text('You do not have any channels configured use /addchannel to add one.')
+            return
+
+        buttons = [
+            [
+                MagicButton(text=f'@{channel["username"]}',
+                            data=channel['id'],
+                            callback=self.remove_channel_from_callback_query,
+                            yes_no=True,
+                            no_callback=self.remove_channel_start)
+                for channel in channels[index:index + 2]
+            ]
+            for index in range(0, len(channels), 2)
+        ]
+        buttons.append([
+            MagicButton(text='Cancel', callback=self.custom_echo_callback_query,
+                        callback_kwargs={
+                            'text': 'Removing channel was cancelled',
+                            'callback': self.reset_state,
+                            'send_telegram_data': True,
+                        })
+        ])
+        real_buttons = MagicButton.conver_buttons(buttons)
+
+        reply = 'Which of these channels do you want to remove.'
+        message.reply_text(text=reply, reply_markup=real_buttons)
+        self.set_user_state(user, self.states.REMOVING_CHANNEL)
+
+    def remove_channel_from_callback_query(self, bot: Bot, update: Update, data: str, *args, **kwargs):
+        user = update.effective_user
+        if self.get_user_state(user) != self.states.REMOVING_CHANNEL:
+            update.effective_message.reply_text('Your remove request was cancelled due to starting another action')
+            return
+        self.remove_channel(user=user, chat=data)
+        self.set_user_state(user, self.states.IDLE)
+        update.effective_message.reply_text('Channel was removed')
+
+    def remove_channel(self, user: User or int, chat: Chat or int):
+        chat_id = self.get_chat_id(chat)
+        user_id = self.get_user_id(user)
+        self.channel_admin.delete_one({'channel_id': chat_id, 'user_id': user_id})
+
+    # List Channels
     # Settings
     # Single Post
     # Multi Post
