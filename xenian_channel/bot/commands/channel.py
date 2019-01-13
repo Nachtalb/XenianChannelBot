@@ -67,9 +67,9 @@ class Channel(BaseCommand):
             },
         ]
 
-        self.channel_admin = mongodb_database.channel_admin  # {user_id: Users ID, channel_id: Channels ID}
+        self.channel_admin = mongodb_database.channel_admin  # {user_id: Users ID, chat_id: Channels ID}
         self.channel_settings = mongodb_database.channel_settings  # {id: Channels ID, caption: Default caption, reactions: Default reaction}
-        self.channel_file = mongodb_database.channel_file  # {channel_id: Channels ID, file_id: Files ID}
+        self.channel_file = mongodb_database.channel_file  # {chat_id: Channels ID, file_id: Files ID}
         self.user_state = mongodb_database.user_state  # {user_id: Users ID, state: State ID}
         self.files = mongodb_database.files  # {file: Telegram File Object, hash: generated hash value}
 
@@ -124,7 +124,7 @@ class Channel(BaseCommand):
         """
         channels = self.channel_admin.find({'user_id': self.get_user_id(user)})
         for channel in channels:
-            yield from database.chats.find({'id': channel['channel_id']})
+            yield from database.chats.find({'id': channel['chat_id']})
 
     def set_user_state(self, user: User or int, state: str):
         """Set the current state of a user
@@ -310,7 +310,7 @@ class Channel(BaseCommand):
 
         admin_data = {
             'user_id': user.id,
-            'channel_id': chat.id
+            'chat_id': chat.id
         }
         self.channel_admin.update(admin_data, admin_data, upsert=True)
 
@@ -365,7 +365,7 @@ class Channel(BaseCommand):
     def remove_channel(self, user: User or int, chat: Chat or int):
         chat_id = self.get_chat_id(chat)
         user_id = self.get_user_id(user)
-        return self.channel_admin.delete_one({'channel_id': chat_id, 'user_id': user_id}).deleted_count
+        return self.channel_admin.delete_one({'chat_id': chat_id, 'user_id': user_id}).deleted_count
 
     # List Channels
     def list_channels(self, bot: Bot, update: Update, *args, **kwargs):
