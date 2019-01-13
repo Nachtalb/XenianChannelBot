@@ -30,6 +30,8 @@ class Channel(BaseCommand):
         ADDING_CHANNEL = 'adding channel'
         REMOVING_CHANNEL = 'removing channel'
         CHANNEL_ACTIONS = 'channel actions'
+        IN_SETTINGS = 'in settings'
+        CHANGE_DEFAULT_CAPTION = 'change defalul caption'
 
     def __init__(self):
         self.commands = [
@@ -61,10 +63,8 @@ class Channel(BaseCommand):
                     'pattern': '^magic_button:.*',
                 },
             },
-            # {'command': self.remove_channel, 'title': 'Add a channel'},
             # {'command': self.create_post, 'title': 'Add a channel'},
             # {'command': self.create_posts, 'title': 'Add a channel'},
-            # {'command': self.settings, 'title': 'Add a channel'},
             {
                 'command': self.message_handler,
                 'description': 'Chooses the right thing to do with a message',
@@ -132,17 +132,19 @@ class Channel(BaseCommand):
         for channel in channels:
             yield from database.chats.find({'id': channel['chat_id']})
 
-    def set_user_state(self, user: User or int, state: str):
+    def set_user_state(self, user: User or int, state: str, chat: Chat or int = None):
         """Set the current state of a user
 
         Args:
             user (:obj:`telegram.user.User` | :obj:`int`): The telegram user of which the state shall be set as a
                 Telegram User object or the users ID
             state (:obj:`str`): The state the user should be in
+            chat (:obj:`telegram.chat.Chat` | :obj:`int`): The current chat being worked on
         """
         data = {
             'user_id': self.get_user_id(user),
-            'state': state
+            'state': state,
+            'chat_id': self.get_chat_id(chat) if chat else None
         }
         self.user_state.update({'user_id': data['user_id']}, data, upsert=True)
 
@@ -156,16 +158,33 @@ class Channel(BaseCommand):
         Returns:
             :obj:`str`: The users current state as a string
         """
+        return self.get_full_state(user)['state']
 
-        user_id = user.id if isinstance(user, User) else user
-        if not user_id:
-            raise ValueError('user must not be empty')
+    def get_current_chat(self, user: User or int) -> int or None:
+        """Get the current chat
 
+        Args:
+            user (:obj:`telegram.user.User` | :obj:`int`): The telegram user of which the state shall be retrieved as a
+                Telegram User object or the users ID
+
+        Returns:
+            :obj:`int`: The current chat or None if not available
+        """
+        return self.get_full_state(user)['chat_id']
+
+    def get_full_state(self, user: User or int) -> Dict:
+        """Get the full state
+
+        Args:
+            user (:obj:`telegram.user.User` | :obj:`int`): The telegram user of which the state shall be retrieved as a
+                Telegram User object or the users ID
+
+        Returns:
+            :obj:`Dict`: The full state
+        """
+        user_id = self.get_user_id(user)
         user_state_entry = self.user_state.find_one({'user_id': user_id})
-        if not user_state_entry:
-            return self.states.IDLE
-        else:
-            return user_state_entry['state']
+        return user_state_entry or {'state': self.states.IDLE, 'chat_id': None}
 
     def get_permission(self, bot: Bot, chat: Chat):
         """Get usual permissions of bot from chat
@@ -187,6 +206,31 @@ class Channel(BaseCommand):
             edit=chat_member.can_edit_messages,
         )
 
+    def get_channel_settings(self, user: User or int, chat: Chat or int):
+        user_id, chat_id = self.get_user_id(user), self.get_chat_id(chat)
+        query = {'user_id': user_id, 'chat_id': chat_id}
+        settings = self.channel_settings.find_one(query)
+
+        if not settings:
+            self.set_channel_settings(user_id, chat_id)
+            settings = self.channel_settings.find_one(query)
+
+        return settings
+
+    def set_channel_settings(self, user: User or int, chat: Chat or int, settings: Dict = None):
+        user_id, chat_id = self.get_user_id(user), self.get_chat_id(chat)
+        query = {'user_id': user_id, 'chat_id': chat_id}
+
+        settings_to_save = {}
+        default_settings = {
+            'caption': '',
+            'reactions': [],
+        }
+        settings_to_save.update(default_settings)
+        settings_to_save.update(settings)
+        settings_to_save.update(query)
+        self.channel_settings.update(query, settings_to_save, upsert=True)
+
     # Miscellaneous
     @run_async
     def message_handler(self, bot: Bot, update: Update):
@@ -203,6 +247,8 @@ class Channel(BaseCommand):
 
         if self.get_user_state(user) == self.states.ADDING_CHANNEL:
             self.add_channel_from_message(bot, update)
+        elif self.get_user_state(user) == self.states.CHANGE_DEFAULT_CAPTION:
+            self.change_default_caption(bot, update)
 
     @run_async
     def echo_state(self, bot: Bot, update: Update):
@@ -271,6 +317,7 @@ class Channel(BaseCommand):
         Returns:
             :obj:`Callable`: Function which can be executes the given actions
         """
+
         @run_async
         def wrapper(*wargs, **wkwargs):
             self.set_user_state(user, state)
@@ -437,7 +484,11 @@ class Channel(BaseCommand):
                             user=user,
                             data=data,
                             yes_no=True,
-                            no_callback=self.channel_actions)
+                            no_callback=self.channel_actions),
+                MagicButton('Settings',
+                            user=user,
+                            callback=self.settings_start,
+                            data=data)
             ],
             [
                 MagicButton('Cancel', user=user, callback=self.list_channels)
@@ -447,6 +498,54 @@ class Channel(BaseCommand):
         message.reply_text(text='What do you want to do?', reply_markup=MagicButton.conver_buttons(buttons))
 
     # Settings
+    @run_async
+    def settings_start(self, bot: Bot, update: Update, data: Dict, *args, **kwargs):
+        user, message = update.effective_user, update.effective_message
+        self.set_user_state(user, self.states.IN_SETTINGS)
+
+        buttons = [
+            [
+                MagicButton(text='Change default caption',
+                            user=user,
+                            data=data,
+                            callback=self.change_caption_callback_query)
+            ],
+            [
+                MagicButton('Cancel',
+                            user=user,
+                            callback=self.channel_actions,
+                            data=data)
+            ]
+        ]
+        message.reply_text(text='What do you want to do?', reply_markup=MagicButton.conver_buttons(buttons))
+
+    @run_async
+    def change_caption_callback_query(self, bot: Bot, update: Update, data: Dict, *args, **kwargs):
+        user, message = update.effective_user, update.effective_message
+
+        setting = self.get_channel_settings(user, data)
+
+        message.reply_text(f'Your default caption at the moment is:\n{setting["caption"] or "Empty"}',
+                           parse_mode=ParseMode.MARKDOWN,
+                           reply_markup=MagicButton.conver_buttons([[
+                               MagicButton('Finished', callback=self.settings_start, data=data, user=user)
+                           ]]))
+        self.set_user_state(user, self.states.CHANGE_DEFAULT_CAPTION, chat=data)
+
+    def change_default_caption(self, bot: Bot, update: Update):
+        user, message = update.effective_user, update.effective_message
+        if not message.text:
+            message.reply_text('You have to send me some text or hit cancel.')
+            return
+
+        current_chat = self.get_current_chat(user)
+        if not current_chat:
+            message.reply_text('An error occurred please hit cancel and try again')
+            return
+
+        self.set_channel_settings(user, current_chat, {'caption': message.text_markdown})
+        self.change_caption_callback_query(bot=bot, update=update, data={'chat_id': current_chat})
+
     # Single Post
     # Multi Post
 
