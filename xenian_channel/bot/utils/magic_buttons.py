@@ -158,8 +158,7 @@ class MagicButton:
 
         button = MagicButton.all_buttons.get(button_id)
         if not button:
-            message.reply_text('Your request timed out, please retry.')
-            message.delete()
+            message.edit_text('Your request timed out, please retry.')
             return
 
         yes_no_answer = button.data.get('yes_no_answer') or 'yes' if not button.yes_no else False
@@ -179,7 +178,8 @@ class MagicButton:
                 original_data = original_button.data
 
             method(bot=Bot, update=update, data=original_data, *custom_args, **custom_kwargs)
-            message.delete()
+            if button.data.get('yes_no_answer'):
+                message.delete()
             return
 
         yes_button = button.copy(text='Yes', yes_no=False, data={'original': button.id, 'yes_no_answer': 'yes'})

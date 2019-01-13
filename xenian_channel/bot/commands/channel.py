@@ -2,7 +2,8 @@ import logging
 from collections import namedtuple
 from typing import Callable, Dict, Generator
 
-from telegram import Bot, Chat, Update, User
+from telegram import Bot, Chat, InlineKeyboardMarkup, Message, Update, User
+from telegram.error import BadRequest
 from telegram.ext import CallbackQueryHandler, MessageHandler, run_async
 from telegram.parsemode import ParseMode
 
@@ -24,6 +25,8 @@ class Channel(BaseCommand):
 
     name = 'Channel Manager'
     group = 'Channel Manager'
+
+    ram_db_button_message_id = {}  # {user_id: Telegram Message Obj}
 
     class states:
         IDLE = 'idle'
@@ -80,6 +83,24 @@ class Channel(BaseCommand):
         self.files = mongodb_database.files  # {file: Telegram File Object, hash: generated hash value}
 
         super(Channel, self).__init__()
+
+    def create_or_update_button_message(self, update: Update, *args, **kwargs) -> Message:
+        user = update.effective_user
+        is_button_message = ('reply_markup' in kwargs or any([isinstance(arg, InlineKeyboardMarkup) for arg in args]))
+
+        message = None
+        if user.id in self.ram_db_button_message_id and is_button_message:
+            try:
+                message = self.ram_db_button_message_id[user.id].edit_text(*args, **kwargs)
+            except BadRequest:
+                pass
+
+        if not message:
+            message = update.effective_message.reply_text(*args, **kwargs)
+
+        if is_button_message:
+            self.ram_db_button_message_id[user.id] = message
+        return message
 
     def get_user_id(self, user: User or int) -> int:
         """Get the users id
@@ -284,7 +305,7 @@ class Channel(BaseCommand):
             username = split_text[1].strip('@')
             user = database.users.find_one({'username': username})
             if not user:
-                message.reply_text(f'User @{username    } could not be found')
+                message.reply_text(f'User @{username} could not be found')
                 return
 
         MagicButton.invalidate_by_user_id(user['id'])
@@ -423,7 +444,7 @@ class Channel(BaseCommand):
         real_buttons = MagicButton.conver_buttons(buttons)
 
         reply = 'Which of these channels do you want to remove.'
-        message.reply_text(text=reply, reply_markup=real_buttons)
+        self.create_or_update_button_message(update, text=reply, reply_markup=real_buttons)
         self.set_user_state(user, self.states.REMOVING_CHANNEL)
 
     @run_async
@@ -469,7 +490,7 @@ class Channel(BaseCommand):
 
         real_buttons = MagicButton.conver_buttons(buttons)
 
-        message.reply_text(text='What do you want to do?', reply_markup=real_buttons)
+        self.create_or_update_button_message(update, text='What do you want to do?', reply_markup=real_buttons)
 
     @run_async
     def channel_actions(self, bot: Bot, update: Update, data: Dict, *args, **kwargs):
@@ -495,7 +516,8 @@ class Channel(BaseCommand):
             ]
         ]
 
-        message.reply_text(text='What do you want to do?', reply_markup=MagicButton.conver_buttons(buttons))
+        self.create_or_update_button_message(update, text='What do you want to do?',
+                                             reply_markup=MagicButton.conver_buttons(buttons))
 
     # Settings
     @run_async
@@ -517,7 +539,8 @@ class Channel(BaseCommand):
                             data=data)
             ]
         ]
-        message.reply_text(text='What do you want to do?', reply_markup=MagicButton.conver_buttons(buttons))
+        self.create_or_update_button_message(update, text='What do you want to do?',
+                                             reply_markup=MagicButton.conver_buttons(buttons))
 
     @run_async
     def change_caption_callback_query(self, bot: Bot, update: Update, data: Dict, *args, **kwargs):
@@ -525,11 +548,13 @@ class Channel(BaseCommand):
 
         setting = self.get_channel_settings(user, data)
 
-        message.reply_text(f'Your default caption at the moment is:\n{setting["caption"] or "Empty"}',
-                           parse_mode=ParseMode.MARKDOWN,
-                           reply_markup=MagicButton.conver_buttons([[
-                               MagicButton('Finished', callback=self.settings_start, data=data, user=user)
-                           ]]))
+        self.create_or_update_button_message(
+            update,
+            f'Your default caption at the moment is:\n{setting["caption"] or "Empty"}',
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=MagicButton.conver_buttons([[
+                MagicButton('Finished', callback=self.settings_start, data=data, user=user)
+            ]]))
         self.set_user_state(user, self.states.CHANGE_DEFAULT_CAPTION, chat=data)
 
     def change_default_caption(self, bot: Bot, update: Update):
