@@ -1,45 +1,33 @@
 from setuptools import find_packages
 from setuptools import setup
 
-version = '2.5.2.dev0'
+version = '0.0.1.dev0'
 
 
-setup(name='XenianBot',
+setup(name='XenianChannelBot',
       version=version,
-      description="Multifunctional Telegram Bot",
+      description="Channel Management Bot based on @XenianBot",
       long_description=f'{open("README.rst").read()}\n{open("CHANGELOG.rst").read()}',
 
       author='Nachtalb',
-      url='https://github.com/Nachtalb/XenianBot',
+      url='https://github.com/Nachtalb/XenianChannelBot',
       license='GPL3',
 
       packages=find_packages(exclude=['ez_setup']),
-      namespace_packages=['xenian'],
+      namespace_packages=['xenian_channel'],
       include_package_data=True,
       zip_safe=False,
 
       install_requires=[
           'emoji',
-          'googletrans',
-          'gtts',
           'htmlmin',
           'mako',
-          'moviepy',
           'mr.developer',
-          'paramiko',
-          'pillow',
-          'pybooru',
           'pymongo',
-          'pytesseract',
           'python-telegram-bot',
-          'requests',
-          'requests-html',
-          'setuptools',
-          'urbandictionary',
-          'youtube-dl',
       ],
 
       entry_points={
           'console_scripts': [
-              'bot = xenian.bot.bot:main']
+              'bot = xenian_channel.bot.bot:main']
       })

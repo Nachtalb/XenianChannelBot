@@ -8,9 +8,9 @@ umask 002
 echo "Check whether to reinstall python packages"
 git diff-tree -r --name-only --no-commit-id HEAD^ HEAD | if grep --quiet "Pipfile.lock"
 then
-  /home/web_server/.pyenv/versions/XenianBot-vjGaRaxr/bin/pipenv install
+  /home/web_server/.pyenv/versions/XenianChannelBot-vjGaRaxr/bin/pipenv install
 fi
 
-echo "Restarting xenian.bot.service"
+echo "Restarting xenian_channel.bot.service"
 sudo /home/web_server/admin_services/restart_xenian.bot
 echo "Restarted"

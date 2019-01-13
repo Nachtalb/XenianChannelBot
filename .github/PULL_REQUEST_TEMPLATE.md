@@ -23,6 +23,6 @@ How does your change affects other areas of the code, etc.
 <!-- Go over all the following points, and put an `x` in all the boxes that apply. -->
 If you're unsure about any of these, don't hesitate to ask. I am here to help!
 
-- [ ] My code follows the [code style](https://github.com/Nachtalb/XenianBot#code-contribution--pull-requests) of this project.
-- [ ] My code follows the [command concept](https://github.com/Nachtalb/XenianBot#command-concept) of this project.
-- [ ] My code follows the [uploaders concept](https://github.com/Nachtalb/XenianBot#uploaders-concept) of this project.
+- [ ] My code follows the [code style](https://github.com/Nachtalb/XenianChannelBot#code-contribution--pull-requests) of this project.
+- [ ] My code follows the [command concept](https://github.com/Nachtalb/XenianChannelBot#command-concept) of this project.
+- [ ] My code follows the [uploaders concept](https://github.com/Nachtalb/XenianChannelBot#uploaders-concept) of this project.

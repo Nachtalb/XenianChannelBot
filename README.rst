@@ -1,8 +1,8 @@
 Xenian Bot
 ==========
 
-`@XenianBot <https://t.me/XenianBot>`__ \|
-`GitHub <https://github.com/Nachtalb/XenianBot>`__
+`@XenianChannelBot <https://t.me/XenianChannelBot>`__ \|
+`GitHub <https://github.com/Nachtalb/XenianChannelBot>`__
 
 .. contents:: Table of Contents
 
@@ -14,7 +14,7 @@ I am a personal assistant which can do various tasks for you. For example, I can
 in Telegram. To see my full capability, send me ``/commands`` and you will see everything available or go to
 `Commands <#commands>`__.
 
-If you like this bot you can rate it `here <https://telegram.me/storebot?start=xenianbot>`__.
+If you like this bot you can rate it `here <https://telegram.me/storebot?start=XenianChannelBot>`__.
 
 Commands
 --------
@@ -206,7 +206,7 @@ After you create your class, you have to call it at least once. It doesn’t mat
 just call it directly after the code, as you can see in the builtins.py. And do not forget that the file with the
 command must be loaded imported somewhere. I usually do this directly in the ``__init__.py``.
 
-A good example can be found in the ``reverse_image_search.py``: https://github.com/Nachtalb/XenianBot/blob/b482cbf8a1eb2ebe3f9683c9144bd3e222a26716/xenian.bot/commands/reverse_image_search.py#L23-L56
+A good example can be found in the ``reverse_image_search.py``: https://github.com/Nachtalb/XenianChannelBot/blob/b482cbf8a1eb2ebe3f9683c9144bd3e222a26716/xenian.bot/commands/reverse_image_search.py#L23-L56
 
 Uploaders Concept
 ^^^^^^^^^^^^^^^^^
@@ -285,4 +285,4 @@ uplaod
     In here you define the actual logic of the uploader. If you do not implement this method in your custom uploader
     there will be an ``NotImplementedError`` raised, when used.
 
-Thank you for using `@XenianBot <https://t.me/XenianBot>`__.
+Thank you for using `@XenianChannelBot <https://t.me/XenianChannelBot>`__.
