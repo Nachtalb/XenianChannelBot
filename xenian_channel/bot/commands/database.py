@@ -45,7 +45,8 @@ class Database(BaseCommand):
         """
         self.upsert_chat(update.effective_chat)
         self.upsert_message(update.effective_message)
-        self.upsert_user(update.effective_user)
+        if not update.channel_post:
+            self.upsert_user(update.effective_user)
 
     def upsert_user(self, user: User):
         """Insert or if existing update user
