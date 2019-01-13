@@ -29,11 +29,13 @@ class Channel(BaseCommand):
         IDLE = 'idle'
         ADDING_CHANNEL = 'adding channel'
         REMOVING_CHANNEL = 'removing channel'
+        CHANNEL_ACTIONS = 'channel actions'
 
     def __init__(self):
         self.commands = [
             {'command': self.add_channel_start, 'command_name': 'addchannel', 'description': 'Add a channel'},
             {'command': self.remove_channel_start, 'command_name': 'removechannel', 'description': 'Remove a channel'},
+            {'command': self.list_channels, 'command_name': 'list', 'description': 'List all channels'},
             {
                 'command': self.echo_state,
                 'command_name': 'state',
@@ -334,6 +336,45 @@ class Channel(BaseCommand):
         self.channel_admin.delete_one({'channel_id': chat_id, 'user_id': user_id})
 
     # List Channels
+    def list_channels(self, bot: Bot, update: Update, *args, **kwargs):
+        user, message = update.effective_user, update.effective_message
+        self.set_user_state(user, self.states.IDLE)
+
+        channels = list(self.get_channels_of_user(user))
+        if not channels:
+            message.reply_text('You do not have any channels configured use /addchannel to add one.')
+            return
+
+        buttons = [
+            [
+                MagicButton(text=f'@{channel["username"]}',
+                            data={'chat_id': channel['id']},
+                            callback=self.channel_actions)
+                for channel in channels[index:index + 2]
+            ]
+            for index in range(0, len(channels), 2)
+        ]
+
+        real_buttons = MagicButton.conver_buttons(buttons)
+
+        message.reply_text(text='What do you want to do?', reply_markup=real_buttons)
+
+    def channel_actions(self, bot: Bot, update: Update, data: Dict, *args, **kwargs):
+        user, message = update.effective_user, update.effective_message
+        self.set_user_state(user, self.states.CHANNEL_ACTIONS)
+
+        buttons = [
+            [
+                MagicButton('Remove', self.remove_channel_from_callback_query, data=data, yes_no=True,
+                            no_callback=self.channel_actions)
+            ],
+            [
+                MagicButton('Cancel', self.list_channels)
+            ]
+        ]
+
+        message.reply_text(text='What do you want to do?', reply_markup=MagicButton.conver_buttons(buttons))
+
     # Settings
     # Single Post
     # Multi Post
