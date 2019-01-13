@@ -84,7 +84,12 @@ class Channel(BaseCommand):
         Returns:
             :obj:`str`: The users int
         """
-        user_id = user.id if isinstance(user, User) else user
+        user_id = user
+        if isinstance(user, User):
+            user_id = user.id
+        elif isinstance(user, Dict):
+            user_id = user.get('user_id') or user.get('id')
+
         if not user_id:
             raise ValueError('user must not be empty')
         return user_id
@@ -98,7 +103,12 @@ class Channel(BaseCommand):
         Returns:
             :obj:`str`: The chat int
         """
-        chat_id = chat.id if isinstance(chat, Chat) else chat
+        chat_id = chat
+        if isinstance(chat, Chat):
+            chat_id = chat.id
+        elif isinstance(chat, Dict):
+            chat_id = chat.get('chat_id') or chat.get('id')
+
         if not chat_id:
             raise ValueError('user must not be empty')
         return chat_id
