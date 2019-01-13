@@ -1,6 +1,6 @@
-from typing import Iterable, Dict
+from typing import Dict, Iterable
 
-from telegram import Bot, Update, Chat
+from telegram import Bot, Chat, Update
 from telegram.ext import CommandHandler, MessageHandler
 from telegram.parsemode import ParseMode
 
@@ -23,25 +23,22 @@ class Builtins(BaseCommand):
         self.commands = [
             {'command': self.start, 'description': 'Initialize the bot'},
             {'command': self.commands, 'description': 'Show all available commands', 'options': {'pass_args': True}},
-            {'command_name': 'help', 'alias': 'commands'},
             {'command': self.support, 'description': 'Contact bot maintainer for support of any kind'},
             {'command': self.register, 'description': 'Register the chat_id for admins and supporters', 'hidden': True},
+            {'command_name': 'help', 'alias': 'commands'},
+            {'command_name': 'contribute', 'alias': 'error'},
             {
-                'command': self.contribute,
+                'command': self.contribute_error,
+                'command_name': 'error',
                 'description': 'Send the supporters and admins a request of any kind',
-                'args': ['text']
-            },
-            {
-                'command': self.error,
-                'description': 'If you have found an error please use this command.',
-                'args': ['text']
+                'args': ['text'],
             },
         ]
 
-        super(Builtins, self).__init__()
-
         self.admin_db = mongodb_database.admins
         self.supporter_db = mongodb_database.supporter
+
+        super(Builtins, self).__init__()
 
     def start(self, bot: Bot, update: Update):
         """Initialize the bot
@@ -118,50 +115,23 @@ class Builtins(BaseCommand):
             'error please use "/error ERROR_DESCRIPTION".\n\nIf you like this bot you can give me rating here: '
             'https://telegram.me/storebot?start=xenianchannelbot'.format(SUPPORTER[0]))
 
-    def contribute(self, bot: Bot, update: Update):
-        """User can use /contribute to let all supporter / admin know something
-
-        This should be used for feature requests or questions
+    def contribute_error(self, bot: Bot, update: Update):
+        """User can use /contribute or /error to let all supporters / admins know of something
 
         Args:
             bot (:obj:`telegram.bot.Bot`): Telegram Api Bot Object.
             update (:obj:`telegram.update.Update`): Telegram Api Update Object
         """
         split_text = update.message.text.split(' ', 1)
+        command = split_text[0].lstrip('/')
+
         if len(split_text) < 2:
-            update.message.reply_text('Please describe your request with "/contribute YOUR_DESCRIPTION"')
+            update.message.reply_text(f'Please describe your request with "/{command} YOUR_DESCRIPTION"')
             return
 
         text = split_text[1]
-        message_text = 'Contribution form {user}: {text}'.format(
-            user=get_user_link(update.message.from_user),
-            text=text,
-            parse_mode=ParseMode.MARKDOWN
-        )
-
-        self.write_to_chats(bot, self.admin_db.find(), message_text)
-        self.write_to_chats(bot, self.supporter_db.find(), message_text)
-
-        update.message.reply_text('I forwarded your request to the admins and supporters.')
-
-    def error(self, bot: Bot, update: Update):
-        """User can use /error to let all supporter / admin know about a bug or something else which has gone wrong
-
-        Args:
-            bot (:obj:`telegram.bot.Bot`): Telegram Api Bot Object.
-            update (:obj:`telegram.update.Update`): Telegram Api Update Object
-        """
-        split_text = update.message.text.split(' ', 1)
-        if len(split_text) < 2:
-            update.message.reply_text('Please describe your issue with "/error YOUR_DESCRIPTION"')
-            return
-
-        text = split_text[1]
-        message_text = 'Error form {user}: {text}'.format(
-            user=get_user_link(update.message.from_user),
-            text=text,
-            parse_mode=ParseMode.MARKDOWN
-        )
+        user = get_user_link(update.message.from_user)
+        message_text = f'{command.capitalize()} form {user}: {text}'
 
         self.write_to_chats(bot, self.admin_db.find(), message_text)
         self.write_to_chats(bot, self.supporter_db.find(), message_text)
