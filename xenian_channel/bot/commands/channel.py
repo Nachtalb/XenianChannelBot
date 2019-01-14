@@ -35,6 +35,7 @@ class Channel(BaseCommand):
         CHANNEL_ACTIONS = 'channel actions'
         IN_SETTINGS = 'in settings'
         CHANGE_DEFAULT_CAPTION = 'change defalul caption'
+        CREATE_SINGLE_POST = 'create single post'
 
     def __init__(self):
         self.commands = [
@@ -80,16 +81,69 @@ class Channel(BaseCommand):
         self.channel_settings = mongodb_database.channel_settings  # {id: Channels ID, caption: Default caption, reactions: Default reaction}
         self.channel_file = mongodb_database.channel_file  # {chat_id: Channels ID, file_id: Files ID}
         self.user_state = mongodb_database.user_state  # {user_id: Users ID, state: State ID}
+        self.queue = mongodb_database.queue  # {user_id: Users ID, chat_id: Channels ID, message: Message Object, scheduled: DateTime, preview: bool}
         self.files = mongodb_database.files  # {file: Telegram File Object, hash: generated hash value}
 
         super(Channel, self).__init__()
+
+    def get_messages_from_queue(self, bot: Bot, user: User or int, chat: Chat or int, **query) -> Generator[Dict, None, None]:
+        user_id, chat_id = self.get_user_id(user), self.get_chat_id(chat)
+        search_query = {'chat_id': chat_id, 'user_id': user_id}
+        search_query.update(query)
+
+        messages = self.queue.find(search_query)
+        for message in messages:
+            result = message.copy()
+            result['message'] = Message.de_json(message['message'], bot=bot)
+            yield result
+
+    def get_message_from_queue(self, bot: Bot, user: User or int, chat: Chat or int, **query) -> Dict:
+        user_id, chat_id = self.get_user_id(user), self.get_chat_id(chat)
+        search_query = {'chat_id': chat_id, 'user_id': user_id}
+        search_query.update(query)
+
+        message = self.queue.find_one(search_query)
+        if message is None:
+            return {}
+        message['message'] = Message.de_json(message['message'], bot=bot)
+        return message
+
+    def delete_messages_from_queue(self, bot: Bot, user: User or int, chat: Chat or int, **query) -> int:
+        user_id, chat_id = self.get_user_id(user), self.get_chat_id(chat)
+        search_query = {'chat_id': chat_id, 'user_id': user_id}
+        search_query.update(query)
+
+        return self.queue.delete_many(search_query).deleted_count
+
+    def add_message_to_queue(self, bot: Bot, user: User or int, chat: Chat or int, message: Message, **query):
+        user_id, chat_id = self.get_user_id(user), self.get_chat_id(chat)
+        default_query = {'chat_id': chat_id, 'user_id': user_id}
+
+        search_query = default_query.copy()
+        data_query = default_query.copy()
+
+        search_query.update({'message.message_id': message.message_id})
+        old = self.get_message_from_queue(bot, user, chat, **search_query)
+
+        data_query.update(old)
+        data_query.update({'message': message.to_dict()})
+        data_query.update(query)
+
+        self.queue.update(search_query, data_query, upsert=True)
 
     def create_or_update_button_message(self, update: Update, *args, **kwargs) -> Message:
         user = update.effective_user
         is_button_message = ('reply_markup' in kwargs or any([isinstance(arg, InlineKeyboardMarkup) for arg in args]))
 
+        create = False
+        if 'create' in kwargs:
+            create = kwargs.pop('create')
+            if create and user.id in self.ram_db_button_message_id:
+                self.ram_db_button_message_id[user.id].delete()
+                del self.ram_db_button_message_id[user.id]
+
         message = None
-        if user.id in self.ram_db_button_message_id and is_button_message:
+        if not create and user.id in self.ram_db_button_message_id and is_button_message:
             try:
                 message = self.ram_db_button_message_id[user.id].edit_text(*args, **kwargs)
             except BadRequest:
@@ -270,6 +324,8 @@ class Channel(BaseCommand):
             self.add_channel_from_message(bot, update)
         elif self.get_user_state(user) == self.states.CHANGE_DEFAULT_CAPTION:
             self.change_default_caption(bot, update)
+        elif self.get_user_state(user) == self.states.CREATE_SINGLE_POST:
+            self.add_message(bot, update)
 
     @run_async
     def echo_state(self, bot: Bot, update: Update):
@@ -308,6 +364,9 @@ class Channel(BaseCommand):
                 message.reply_text(f'User @{username} could not be found')
                 return
 
+        if user['id'] in self.ram_db_button_message_id:
+            del self.ram_db_button_message_id[user['id']]
+
         MagicButton.invalidate_by_user_id(user['id'])
         update.effective_message.reply_text('Invalidated all buttons')
 
@@ -345,6 +404,86 @@ class Channel(BaseCommand):
             callback(*wargs, **wkwargs)
 
         return wrapper
+
+    def send_correct_message(self, bot: Bot, chat: Chat or int, message_entry: Dict):
+        chat_id = self.get_chat_id(chat)
+        message = message_entry['message']
+
+        method = bot.send_message
+        include_kwargs = {'text': message.text}
+
+        if message.photo:
+            method = bot.send_photo
+            include_kwargs = {'photo': message.photo[-1], 'caption': message.caption}
+        elif message.animation:
+            method = bot.send_animation
+            include_kwargs = {
+                'animation': message.animation,
+                'caption': message.caption,
+                'duration': message.animation.duration,
+                'width': message.animation.width,
+                'height': message.animation.height,
+                'thumb': message.animation.thumb.file_id,
+            }
+        elif message.sticker:
+            method = bot.send_sticker
+            include_kwargs = {
+                'sticker': message.sticker,
+            }
+        elif message.audio:
+            method = bot.send_audio
+            include_kwargs = {
+                'audio': message.audio,
+                'caption': message.caption,
+                'duration': message.audio.duration,
+                'performer': message.audio.performer,
+                'title': message.audio.title,
+                'thumb': message.audio.thumb.file_id,
+            }
+        elif message.contact:
+            method = bot.send_contact
+            include_kwargs = {
+                'contact': message.contact,
+            }
+        elif message.document:
+            method = bot.send_document
+            include_kwargs = {
+                'document': message.document,
+                'caption': message.caption,
+                'filename': message.document.filename,
+                'thumb': message.document.thumb.file_id,
+            }
+        elif message.video:
+            method = bot.send_video
+            include_kwargs = {
+                'video': message.video,
+                'caption': message.caption,
+                'duration': message.video.duration,
+                'width': message.video.width,
+                'height': message.video.height,
+                'supports_streaming': message.video.supports_streaming,
+                'thumb': message.video.thumb.file_id,
+            }
+        elif message.video_note:
+            method = bot.send_video_note
+            include_kwargs = {
+                'video_note': message.video_note,
+                'duration': message.video_note.duration,
+                'length': message.video_note.length,
+                'thumb': message.video_note.thumb.file_id,
+            }
+        elif message.voice:
+            method = bot.send_voice
+            include_kwargs = {
+                'voice': message.voice,
+                'duration': message.voice.duration,
+                'caption': message.caption,
+            }
+        try:
+            method(chat_id=chat_id, **include_kwargs)
+        except Exception as e:
+            print(e)
+            pass
 
     # Adding Channels
     @run_async
@@ -495,9 +634,15 @@ class Channel(BaseCommand):
     @run_async
     def channel_actions(self, bot: Bot, update: Update, data: Dict, *args, **kwargs):
         user, message = update.effective_user, update.effective_message
-        self.set_user_state(user, self.states.CHANNEL_ACTIONS)
+        self.set_user_state(user, self.states.CHANNEL_ACTIONS, data)
 
         buttons = [
+            [
+                MagicButton('Create Post',
+                            callback=self.create_post_callback_query,
+                            user=user,
+                            data=data)
+            ],
             [
                 MagicButton('Remove',
                             callback=self.set_state_and_run(user, self.states.REMOVING_CHANNEL,
@@ -523,7 +668,7 @@ class Channel(BaseCommand):
     @run_async
     def settings_start(self, bot: Bot, update: Update, data: Dict, *args, **kwargs):
         user, message = update.effective_user, update.effective_message
-        self.set_user_state(user, self.states.IN_SETTINGS)
+        self.set_user_state(user, self.states.IN_SETTINGS, data)
 
         buttons = [
             [
@@ -557,6 +702,7 @@ class Channel(BaseCommand):
             ]]))
         self.set_user_state(user, self.states.CHANGE_DEFAULT_CAPTION, chat=data)
 
+    @run_async
     def change_default_caption(self, bot: Bot, update: Update):
         user, message = update.effective_user, update.effective_message
         if not message.text:
@@ -572,6 +718,75 @@ class Channel(BaseCommand):
         self.change_caption_callback_query(bot=bot, update=update, data={'chat_id': current_chat})
 
     # Single Post
+    @run_async
+    def create_post_callback_query(self, bot: Bot, update: Update, data: Dict, recreate_message: bool = False, *args,
+                                   **kwargs):
+        user, message = update.effective_user, update.effective_message
+        self.set_user_state(user, self.states.CREATE_SINGLE_POST, data)
+
+        buttons = [
+            [
+                MagicButton('Preview', user=user, callback=self.send_post_callback_query, data=data,
+                            callback_kwargs={'preview': True}),
+                MagicButton('Clear Queue', user=user, callback=self.clear_queue_callback_query, data=data,
+                            yes_no=True, no_callback=self.create_post_callback_query)
+            ],
+            [
+                MagicButton('Send', user=user, callback=self.send_post_callback_query, data=data,
+                            yes_no=True, no_callback=self.create_post_callback_query)
+
+            ],
+            [
+                MagicButton('Cancel', user=user, callback=self.channel_actions, data=data)
+            ]
+        ]
+
+        in_store = list(self.get_messages_from_queue(bot=bot, user=user, chat=data, preview=True))
+        self.create_or_update_button_message(
+            update, text=f'Send me what should be sent to the channel: {len(in_store)} in queue',
+            reply_markup=MagicButton.conver_buttons(buttons), create=recreate_message)
+
+    @run_async
+    def add_message(self, bot: Bot, update: Update, *args, **kwargs):
+        user, message = update.effective_user, update.effective_message
+        chat_id = self.get_current_chat(user)
+
+        self.add_message_to_queue(bot=bot, user=user, chat=chat_id, message=message, preview=True)
+        message.reply_text('Message was added sent the next one.')
+        self.create_post_callback_query(bot, update, data={'chat_id': chat_id}, recreate_message=True, *args, **kwargs)
+
+    @run_async
+    def send_post_callback_query(self, bot: Bot, update: Update, data: Dict, *args, **kwargs):
+        user, message = update.effective_user, update.effective_message
+        chat_id = self.get_chat_id(data)
+        self.set_user_state(user, self.states.CREATE_SINGLE_POST, data)
+
+        settings = self.get_channel_settings(user, chat_id)
+        preview = kwargs.get('preview', False)
+
+        send_to = message.chat_id if preview else chat_id
+
+        messages = list(self.get_messages_from_queue(bot=bot, user=user, chat=chat_id, preview=True))
+        for stored_message in messages:
+            if settings['caption']:
+                stored_message['message'].caption = settings['caption']
+
+            self.send_correct_message(bot=message.bot, chat=send_to, message_entry=stored_message)
+            self.add_message_to_queue(bot=bot, user=user, chat=chat_id, message=stored_message['message'],
+                                      preview=preview)
+
+        self.create_post_callback_query(bot, update, data, recreate_message=True, *args, **kwargs)
+
+    @run_async
+    def clear_queue_callback_query(self, bot: Bot, update: Update, data: Dict, *args, **kwargs):
+        user, message = update.effective_user, update.effective_message
+        chat_id = self.get_chat_id(data)
+        self.set_user_state(user, self.states.CREATE_SINGLE_POST, data)
+
+        deleted_count = self.delete_messages_from_queue(bot=bot, user=user, chat=chat_id, preview=True)
+        message.reply_text(text=f'{deleted_count} removed.')
+
+        self.create_post_callback_query(bot, update, data, recreate_message=True, *args, **kwargs)
     # Multi Post
 
 

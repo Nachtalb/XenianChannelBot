@@ -2,6 +2,7 @@ from typing import Callable, Dict, List
 from uuid import uuid4
 
 from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup, Update, User
+from telegram.error import BadRequest
 from telegram.ext import run_async
 
 
@@ -179,7 +180,10 @@ class MagicButton:
 
             method(bot=Bot, update=update, data=original_data, *custom_args, **custom_kwargs)
             if button.data.get('yes_no_answer'):
-                message.delete()
+                try:
+                    message.delete()
+                except BadRequest:
+                    pass
             return
 
         yes_button = button.copy(text='Yes', yes_no=False, data={'original': button.id, 'yes_no_answer': 'yes'})
