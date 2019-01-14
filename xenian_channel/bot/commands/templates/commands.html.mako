@@ -15,6 +15,7 @@
     \n
 % endfor
 \n
+% if indirect_commands:
 <b>Indirect Commands:</b>
 \n
 % for group_name, command_list in indirect_commands.items():
@@ -26,3 +27,4 @@
     % endfor
     \n
 % endfor
+% endif
