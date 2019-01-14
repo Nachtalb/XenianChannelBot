@@ -1,6 +1,7 @@
 import logging
 from collections import namedtuple
 from functools import wraps
+from time import sleep
 from typing import Callable, Dict, Generator
 
 from telegram import Bot, Chat, InlineKeyboardMarkup, Message, Update, User
@@ -192,9 +193,9 @@ class Channel(BaseCommand):
             if create and user.id in self.ram_db_button_message_id:
                 try:
                     self.ram_db_button_message_id[user.id].delete()
-                except BadRequest:
+                    del self.ram_db_button_message_id[user.id]
+                except (BadRequest, KeyError):
                     pass
-                del self.ram_db_button_message_id[user.id]
 
         message = None
         if not create and user.id in self.ram_db_button_message_id and is_button_message:
@@ -847,6 +848,7 @@ class Channel(BaseCommand):
         send_to = message.chat_id if preview else chat_id
 
         messages = list(self.get_messages_from_queue(bot=bot, user=user, chat=chat_id, preview=True))
+        not_sent = []
 
         progress_bar = TelegramProgressBar(
             bot=message.bot,
@@ -865,12 +867,17 @@ class Channel(BaseCommand):
                     [MagicButton('Delete', user, callback=self.remove_from_queue_callback_query, data=stored_message)]]
                 include_kwargs['reply_markup'] = MagicButton.conver_buttons(buttons)
 
-            method(chat_id=send_to, **include_kwargs)
-
-            self.add_message_to_queue(bot=bot, user=user, chat=chat_id, message=stored_message['message'],
-                                      preview=preview)
+            try:
+                sleep(0.3)
+                method(chat_id=send_to, **include_kwargs)
+                self.add_message_to_queue(bot=bot, user=user, chat=chat_id, message=stored_message['message'],
+                                          preview=preview)
+            except Exception:
+                not_sent.append((method, chat_id, include_kwargs))
         self.set_user_state(user, self.states.CREATE_SINGLE_POST, chat=chat_id)
 
+        if not_sent:
+            message.reply_text(f'{len(not_sent)} could not be sent yet, currently the server is the bottleneck')
         self.create_post_callback_query(bot, update, data, recreate_message=True, *args, **kwargs)
 
     @locked
