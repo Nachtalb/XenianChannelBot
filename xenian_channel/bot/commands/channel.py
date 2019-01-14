@@ -140,7 +140,10 @@ class Channel(BaseCommand):
         if 'create' in kwargs:
             create = kwargs.pop('create')
             if create and user.id in self.ram_db_button_message_id:
-                self.ram_db_button_message_id[user.id].delete()
+                try:
+                    self.ram_db_button_message_id[user.id].delete()
+                except BadRequest:
+                    pass
                 del self.ram_db_button_message_id[user.id]
 
         message = None
@@ -450,7 +453,7 @@ class Channel(BaseCommand):
             include_kwargs = {
                 'document': message.document,
                 'caption': message.caption,
-                'filename': message.document.filename,
+                'filename': message.document.file_name,
                 'thumb': message.document.thumb.file_id,
             }
         elif message.video:
@@ -801,9 +804,14 @@ class Channel(BaseCommand):
         user, message = update.effective_user, update.effective_message
         chat_id = self.get_current_chat(user)
 
-        self.delete_messages_from_queue(bot=bot, user=user, chat=chat_id,
-                                        **{'message.message_id': data['message'].message_id})
-        message.delete()
+        query = dict(bot=bot, user=user, chat=chat_id, **{'message.message_id': data['message'].message_id})
+        old = self.get_message_from_queue(**query)
+
+        if not old['preview']:
+            message.edit_reply_markup()
+        else:
+            self.delete_messages_from_queue(**query)
+            message.delete()
 
         self.create_post_callback_query(bot, update, {'chat_id': chat_id}, *args, **kwargs)
     # Multi Post
