@@ -10,7 +10,7 @@ Xenian Bot
 What I do
 ---------
 
-I am your personal assistant to help you with your channels. You may want to start with ``/addchanel``.
+I am your personal assistant to help you with your channels. You may want to start with ``/addchannel``.
 After you added your channels use ``/list`` to view and manage them.
 
 If you need any help use ``/help`` or ask an admin with ``/support``.
