@@ -5,6 +5,7 @@ from time import sleep
 from typing import Callable, Dict, Generator
 from warnings import warn
 
+import emoji
 from telegram import Bot, Chat, InlineKeyboardMarkup, Message, Update, User
 from telegram.error import BadRequest, TimedOut
 from telegram.ext import CallbackQueryHandler, Job, MessageHandler, run_async
@@ -85,7 +86,8 @@ class Channel(BaseCommand):
         REMOVING_CHANNEL = 'removing channel'
         CHANNEL_ACTIONS = 'channel actions'
         IN_SETTINGS = 'in settings'
-        CHANGE_DEFAULT_CAPTION = 'change defalul caption'
+        CHANGE_DEFAULT_CAPTION = 'change default caption'
+        CHANGE_DEFAULT_REACTION = 'change default reaction'
         CREATE_SINGLE_POST = 'create single post'
         SEND_LOCKED = 'send_locked'
 
@@ -358,15 +360,12 @@ class Channel(BaseCommand):
         user_id, chat_id = self.get_user_id(user), self.get_chat_id(chat)
         query = {'user_id': user_id, 'chat_id': chat_id}
 
-        settings_to_save = {}
-        default_settings = {
-            'caption': '',
-            'reactions': [],
-        }
-        settings_to_save.update(default_settings)
-        settings_to_save.update(settings or {})
-        settings_to_save.update(query)
-        self.channel_settings.update(query, settings_to_save, upsert=True)
+        settings = settings or {}
+        settings.update(query)
+
+        settings.setdefault('caption', '')
+        settings.setdefault('reactions', [])
+        self.channel_settings.update(query, {'$set': settings}, upsert=True)
 
     # Miscellaneous
     @locked
@@ -387,6 +386,8 @@ class Channel(BaseCommand):
             self.add_channel_from_message(bot, update)
         elif self.get_user_state(user) == self.states.CHANGE_DEFAULT_CAPTION:
             self.change_default_caption(bot, update)
+        elif self.get_user_state(user) == self.states.CHANGE_DEFAULT_REACTION:
+            self.change_default_reaction(bot, update)
         elif self.get_user_state(user) == self.states.CREATE_SINGLE_POST:
             self.add_message(bot, update)
 
@@ -761,6 +762,12 @@ class Channel(BaseCommand):
                             callback=self.change_caption_callback_query)
             ],
             [
+                MagicButton(text='Change default reactions',
+                            user=user,
+                            data=data,
+                            callback=self.change_reaction_callback_query)
+            ],
+            [
                 MagicButton('Back',
                             user=user,
                             callback=self.channel_actions,
@@ -788,6 +795,34 @@ class Channel(BaseCommand):
 
     @locked
     @run_async
+    def change_reaction_callback_query(self, bot: Bot, update: Update, data: Dict, *args, **kwargs):
+        user, message = update.effective_user, update.effective_message
+
+        setting = self.get_channel_settings(user, data)
+        chat_name = self.get_chat_username(data)
+
+        reactions = setting['reactions']
+        buttons = [
+            [
+                MagicButton(text=reaction,
+                            user=user,
+                            callback=lambda *_, **__: None)
+                for reaction in reactions[index:index + 4]
+            ]
+            for index in range(0, len(reactions), 4)
+        ]
+        buttons.insert(0, [
+            MagicButton('Finished', callback=self.settings_start, data=data, user=user)
+        ])
+
+        self.create_or_update_button_message(
+            update,
+            f'Channel: {chat_name}\nYour default reactions at the moment are\n{"" if setting["reactions"] else "None"}',
+            reply_markup=MagicButton.conver_buttons(buttons))
+        self.set_user_state(user, self.states.CHANGE_DEFAULT_REACTION, chat=data)
+
+    @locked
+    @run_async
     def change_default_caption(self, bot: Bot, update: Update):
         user, message = update.effective_user, update.effective_message
         if not message.text:
@@ -801,6 +836,25 @@ class Channel(BaseCommand):
 
         self.set_channel_settings(user, current_chat, {'caption': message.text})
         self.change_caption_callback_query(bot=bot, update=update, data={'chat_id': current_chat})
+
+    @locked
+    @run_async
+    def change_default_reaction(self, bot: Bot, update: Update):
+        user, message = update.effective_user, update.effective_message
+        emojis = emoji.emoji_lis(message.text)
+        reactions = [reaction['emoji'] for reaction in emojis]
+
+        if not message.text or not emojis:
+            message.reply_text('You have to send me some some reactions (Emoji).')
+            return
+
+        current_chat = self.get_current_chat(user)
+        if not current_chat:
+            message.reply_text('An error occurred please hit cancel and try again')
+            return
+
+        self.set_channel_settings(user, current_chat, {'reactions': reactions})
+        self.change_reaction_callback_query(bot=bot, update=update, data={'chat_id': current_chat})
 
     # Single Post
     @locked
