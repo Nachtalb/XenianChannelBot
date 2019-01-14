@@ -1,7 +1,7 @@
 Changelog
 =========
 
-0.0.1 (unreleased)
+0.0.1 (2019-01-14)
 ------------------
 
 - Copy source code from `@XenianChannelBot <https://github.com/Nachtalb/XenianChannelBot>`_ and strip it down
