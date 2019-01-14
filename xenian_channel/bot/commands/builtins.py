@@ -6,7 +6,7 @@ from telegram.parsemode import ParseMode
 
 from xenian_channel.bot import mongodb_database
 from xenian_channel.bot.settings import ADMINS, SUPPORTER
-from xenian_channel.bot.utils import get_user_link, render_template
+from xenian_channel.bot.utils import get_user_chat_link, render_template
 from .base import BaseCommand
 
 __all__ = ['builtins']
@@ -132,7 +132,7 @@ class Builtins(BaseCommand):
             return
 
         text = split_text[1]
-        user = get_user_link(update.message.from_user)
+        user = get_user_chat_link(update.message.from_user)
         message_text = f'{command.capitalize()} form {user}: {text}'
 
         self.write_to_chats(bot, self.admin_db.find(), message_text)

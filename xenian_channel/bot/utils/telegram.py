@@ -1,12 +1,12 @@
 from functools import wraps
-from typing import Callable
+from typing import Callable, Dict
 
-from telegram import Bot, Update, User
+from telegram import Bot, Update, User, Chat
 from telegram.error import TimedOut, NetworkError
 
 from . import MWT
 
-__all__ = ['get_self', 'get_user_link']
+__all__ = ['get_self', 'get_user_chat_link']
 
 
 @MWT(timeout=60 * 60)
@@ -22,19 +22,20 @@ def get_self(bot: Bot) -> User:
     return bot.get_me()
 
 
-def get_user_link(user: User) -> str:
-    """Get the link to a user
+def get_user_chat_link(user: User or Chat or Dict, as_link:bool=False) -> str or None:
+    """Get the link to a user or chat
 
-    Either the @Username or [First Name](tg://user?id=123456)
+    Either the @Username or [First Name](tg://user?id=123456) else None
 
     Args:
-        user (:obj:`telegram.user.User`): A Telegram User Object
+        user (:obj:`telegram.user.User` | :obj:`telegram.chat.Chat` | :obj:`Dict`): A Telegram User or Chat Object
+        as_link (:obj:`bool`): If you want the link instead  of the username
 
     Returns:
         :obj:`str`: The link to a user
     """
-    if user.username:
-        return '@{}'.format(user.username)
+    if not as_link and user['username']:
+        return '@{}'.format(user['username'])
     else:
         return '[{}](tg://user?id={})'.format(user.first_name, user.id)
 

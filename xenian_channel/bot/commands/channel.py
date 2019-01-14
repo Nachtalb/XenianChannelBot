@@ -13,7 +13,7 @@ from telegram.parsemode import ParseMode
 from xenian_channel.bot import job_queue, mongodb_database
 from xenian_channel.bot.commands import database
 from xenian_channel.bot.settings import ADMINS, LOG_LEVEL
-from xenian_channel.bot.utils import TelegramProgressBar, get_self
+from xenian_channel.bot.utils import TelegramProgressBar, get_self, get_user_chat_link
 from xenian_channel.bot.utils.magic_buttons import MagicButton
 from .base import BaseCommand
 
@@ -137,6 +137,12 @@ class Channel(BaseCommand):
         self.files = mongodb_database.files  # {file: Telegram File Object, hash: generated hash value}
 
         super(Channel, self).__init__()
+
+    def get_chat_username(self, chat: Chat or int, as_link: bool = False) -> str or None:
+        chat_id = self.get_chat_id(chat)
+        found_chat = database.chats.find_one({'id': chat_id})
+        return get_user_chat_link(found_chat, as_link=as_link)
+
 
     def get_messages_from_queue(self, bot: Bot, user: User or int, chat: Chat or int, **query) -> Generator[
         Dict, None, None]:
@@ -711,7 +717,6 @@ class Channel(BaseCommand):
     def channel_actions(self, bot: Bot, update: Update, data: Dict, *args, **kwargs):
         user, message = update.effective_user, update.effective_message
         self.set_user_state(user, self.states.CHANNEL_ACTIONS, data)
-
         buttons = [
             [
                 MagicButton('Create Post',
@@ -737,7 +742,8 @@ class Channel(BaseCommand):
             ]
         ]
 
-        self.create_or_update_button_message(update, text='What do you want to do?',
+        chat_name = self.get_chat_username(data)
+        self.create_or_update_button_message(update, text=f'Channel: {chat_name}\nWhat do you want to do?',
                                              reply_markup=MagicButton.conver_buttons(buttons))
 
     # Settings
@@ -755,13 +761,14 @@ class Channel(BaseCommand):
                             callback=self.change_caption_callback_query)
             ],
             [
-                MagicButton('Cancel',
+                MagicButton('Back',
                             user=user,
                             callback=self.channel_actions,
                             data=data)
             ]
         ]
-        self.create_or_update_button_message(update, text='What do you want to do?',
+        chat_name = self.get_chat_username(data)
+        self.create_or_update_button_message(update, text=f'Channel: {chat_name}\nWhat do you want to do?',
                                              reply_markup=MagicButton.conver_buttons(buttons))
 
     @locked
@@ -770,11 +777,10 @@ class Channel(BaseCommand):
         user, message = update.effective_user, update.effective_message
 
         setting = self.get_channel_settings(user, data)
-
+        chat_name = self.get_chat_username(data)
         self.create_or_update_button_message(
             update,
-            f'Your default caption at the moment is:\n{setting["caption"] or "Empty"}',
-            parse_mode=ParseMode.MARKDOWN,
+            f'Channel: {chat_name}\nYour default caption at the moment is:\n{setting["caption"] or "Empty"}',
             reply_markup=MagicButton.conver_buttons([[
                 MagicButton('Finished', callback=self.settings_start, data=data, user=user)
             ]]))
@@ -793,7 +799,7 @@ class Channel(BaseCommand):
             message.reply_text('An error occurred please hit cancel and try again')
             return
 
-        self.set_channel_settings(user, current_chat, {'caption': message.text_markdown})
+        self.set_channel_settings(user, current_chat, {'caption': message.text})
         self.change_caption_callback_query(bot=bot, update=update, data={'chat_id': current_chat})
 
     # Single Post
@@ -822,8 +828,9 @@ class Channel(BaseCommand):
         ]
 
         in_store = list(self.get_messages_from_queue(bot=bot, user=user, chat=data, preview=True))
+        chat_name = self.get_chat_username(data)
         self.create_or_update_button_message(
-            update, text=f'Send me what should be sent to the channel: {len(in_store)} in queue',
+            update, text=f'Channel: {chat_name}\nSend me what should be sent to the channel: {len(in_store)} in queue',
             reply_markup=MagicButton.conver_buttons(buttons), create=recreate_message)
 
     @locked
