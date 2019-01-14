@@ -4,10 +4,10 @@ from typing import Callable, Dict, Generator
 
 from telegram import Bot, Chat, InlineKeyboardMarkup, Message, Update, User
 from telegram.error import BadRequest
-from telegram.ext import CallbackQueryHandler, MessageHandler, run_async
+from telegram.ext import CallbackQueryHandler, Job, MessageHandler, run_async
 from telegram.parsemode import ParseMode
 
-from xenian_channel.bot import mongodb_database
+from xenian_channel.bot import job_queue, mongodb_database
 from xenian_channel.bot.commands import database
 from xenian_channel.bot.settings import ADMINS, LOG_LEVEL
 from xenian_channel.bot.utils import get_self
@@ -17,6 +17,35 @@ from .base import BaseCommand
 __all__ = ['channel']
 
 Permission = namedtuple('Permission', ['is_admin', 'post', 'delete', 'edit'])
+
+
+class JobsQueue:
+    all_jobs = []
+
+    class types:
+        SEND_BUTTON_MESSAGE = 'send_button_message'
+
+    def __init__(self, user_id: int, job: Job, type: str, replaceable: bool = True):
+        self.user_id = user_id
+        self.job = job
+        self.type = type
+        self.replaceable = replaceable
+        JobsQueue.all_jobs.append(self)
+
+        self.replace()
+
+    def replace(self):
+        if not self.replaceable:
+            return
+
+        jobs = [job for job in JobsQueue.all_jobs if
+                job.user_id == self.user_id and job.type == self.type and job != self]
+        if not jobs:
+            return
+
+        for job in jobs:
+            JobsQueue.all_jobs.remove(job)
+            job.job.schedule_removal()
 
 
 class Channel(BaseCommand):
@@ -758,7 +787,13 @@ class Channel(BaseCommand):
 
         self.add_message_to_queue(bot=bot, user=user, chat=chat_id, message=message, preview=True)
         message.reply_text('Message was added sent the next one.')
-        self.create_post_callback_query(bot, update, data={'chat_id': chat_id}, recreate_message=True, *args, **kwargs)
+
+        job = job_queue.run_once(
+            lambda bot_, **__: self.create_post_callback_query(
+                bot_, update, data={'chat_id': chat_id}, recreate_message=True, *args, **kwargs),
+            when=1
+        )
+        JobsQueue(user_id=user.id, job=job, type=JobsQueue.types.SEND_BUTTON_MESSAGE, replaceable=True)
 
     @run_async
     def send_post_callback_query(self, bot: Bot, update: Update, data: Dict, *args, **kwargs):
