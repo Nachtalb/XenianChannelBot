@@ -24,6 +24,7 @@ class MagicButton:
          url (:obj:`str`, optional): A url where the user should be sent to
          yes_no (:obj:`bool`, optional): If before calling the callback function a yes / no answer should be given
             Final data to the given to the Callback will be "original_data:yes | no"
+         yes_no_text (:obj:`str`, optional): Text for yes / no question
          no_callback (:obj:`Callable`, optional): Same as "callback" but for the answer no
          no_callback_args (:obj:`List`, optional): List of additional arguments
          no_callback_kwargs (:obj:`Dict`, optional): Dict of additional keyword arguments
@@ -40,6 +41,7 @@ class MagicButton:
                  data: Dict = None,
                  url: str = None,
                  yes_no: bool = False,
+                 yes_no_text: str = None,
                  no_callback: Callable = None,
                  no_callback_args: List = None,
                  no_callback_kwargs: Dict = None,
@@ -57,6 +59,7 @@ class MagicButton:
         self.data = data or {}
         self.url = url
         self.yes_no = yes_no
+        self.yes_no_text = yes_no_text or 'Are you sure?'
 
         self.callback = callback
         self.callback_args = callback_args or []
@@ -162,7 +165,7 @@ class MagicButton:
             try:
                 message.edit_text('Your request timed out, please retry.')
             except BadRequest:
-                message.delete()
+                message.edit_reply_markup()
             return
 
         yes_no_answer = button.data.get('yes_no_answer') or 'yes' if not button.yes_no else False
@@ -193,4 +196,4 @@ class MagicButton:
         no_button = button.copy(text='No', yes_no=False, data={'original': button.id, 'yes_no_answer': 'no'})
 
         real_buttons = MagicButton.conver_buttons([[yes_button, no_button]])
-        message.edit_text(text=message.text, reply_markup=real_buttons)
+        message.edit_text(text=button.yes_no_text, reply_markup=real_buttons)
