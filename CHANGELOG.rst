@@ -4,7 +4,8 @@ Changelog
 0.0.2 (unreleased)
 ------------------
 
-- Nothing changed yet.
+- Update ``settings.example.py``
+- Fix typo
 
 
 0.0.1 (2019-01-14)
