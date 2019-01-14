@@ -3,9 +3,10 @@ from collections import namedtuple
 from functools import wraps
 from time import sleep
 from typing import Callable, Dict, Generator
+from warnings import warn
 
 from telegram import Bot, Chat, InlineKeyboardMarkup, Message, Update, User
-from telegram.error import BadRequest
+from telegram.error import BadRequest, TimedOut
 from telegram.ext import CallbackQueryHandler, Job, MessageHandler, run_async
 from telegram.parsemode import ParseMode
 
@@ -874,17 +875,19 @@ class Channel(BaseCommand):
             stored_message['message'].caption = caption
             method, include_kwargs = self.get_correct_send_message(bot=message.bot, message_entry=stored_message)
 
-            if preview:
-                buttons = [
-                    [MagicButton('Delete', user, callback=self.remove_from_queue_callback_query, data=stored_message)]]
-                include_kwargs['reply_markup'] = MagicButton.conver_buttons(buttons)
-
             try:
+                if preview:
+                    buttons = [
+                        [MagicButton('Delete', user, callback=self.remove_from_queue_callback_query, data=stored_message)]]
+                    include_kwargs['reply_markup'] = MagicButton.conver_buttons(buttons)
+
                 sleep(0.3)
                 method(chat_id=send_to, **include_kwargs)
                 self.add_message_to_queue(bot=bot, user=user, chat=chat_id, message=stored_message['message'],
                                           preview=preview)
-            except Exception:
+            except (Exception, BaseException) as e:
+                if not isinstance(e, TimedOut):
+                    warn(e)
                 not_sent.append((method, chat_id, include_kwargs))
         self.set_user_state(user, self.states.CREATE_SINGLE_POST, chat=chat_id)
 
