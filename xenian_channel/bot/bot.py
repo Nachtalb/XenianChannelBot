@@ -7,7 +7,6 @@ from telegram import Bot, TelegramError, Update
 from telegram.ext import CommandHandler, Filters, Updater
 
 import xenian_channel.bot
-from .commands import BaseCommand
 from .settings import ADMINS, LOG_LEVEL, MODE, TELEGRAM_API_TOKEN
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=LOG_LEVEL)
@@ -61,6 +60,7 @@ def main():
 
     dispatcher.add_handler(CommandHandler('restart', restart, filters=Filters.user(username=ADMINS)))
 
+    from .commands import BaseCommand
     for command_class in BaseCommand.all_commands:
         for command in command_class.commands:
             dispatcher.add_handler(command['handler'](**command['options']), command['group'])
