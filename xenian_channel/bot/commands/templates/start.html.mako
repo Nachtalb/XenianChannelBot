@@ -1,10 +1,6 @@
 Hello and welcome to me, <b>@XenianChannelBot</b>
 <br>
 <br>
-I am a personal assistant which can do various tasks for you. For example, I can do reverse image searches directly here
-in Telegram. To see my full capability, use /commands.
+I am your personal assistant to help you with your channels. You may want to start with /addchanel. After you added your channels use /list to view and manage them.
 <br>
-If you need help plase do not hesitate and contact us with /support.
-<br>
-<br>
-If you like this bot you can give me a rating <a href="https://telegram.me/storebot?start=xenianchannelbot">here</a>
+If you need any help use /help or ask an admin with /support.
