@@ -86,7 +86,8 @@ class Channel(BaseCommand):
 
         super(Channel, self).__init__()
 
-    def get_messages_from_queue(self, bot: Bot, user: User or int, chat: Chat or int, **query) -> Generator[Dict, None, None]:
+    def get_messages_from_queue(self, bot: Bot, user: User or int, chat: Chat or int, **query) -> Generator[
+        Dict, None, None]:
         user_id, chat_id = self.get_user_id(user), self.get_chat_id(chat)
         search_query = {'chat_id': chat_id, 'user_id': user_id}
         search_query.update(query)
@@ -405,8 +406,7 @@ class Channel(BaseCommand):
 
         return wrapper
 
-    def send_correct_message(self, bot: Bot, chat: Chat or int, message_entry: Dict):
-        chat_id = self.get_chat_id(chat)
+    def get_correct_send_message(self, bot: Bot, message_entry: Dict):
         message = message_entry['message']
 
         method = bot.send_message
@@ -479,8 +479,9 @@ class Channel(BaseCommand):
                 'duration': message.voice.duration,
                 'caption': message.caption,
             }
+
         try:
-            method(chat_id=chat_id, **include_kwargs)
+            return method, include_kwargs
         except Exception as e:
             print(e)
             pass
@@ -770,8 +771,15 @@ class Channel(BaseCommand):
         for stored_message in messages:
             if settings['caption']:
                 stored_message['message'].caption = settings['caption']
+            method, include_kwargs = self.get_correct_send_message(bot=message.bot, message_entry=stored_message)
 
-            self.send_correct_message(bot=message.bot, chat=send_to, message_entry=stored_message)
+            if preview:
+                buttons = [
+                    [MagicButton('Delete', user, callback=self.remove_from_queue_callback_query, data=stored_message)]]
+                include_kwargs['reply_markup'] = MagicButton.conver_buttons(buttons)
+
+            method(chat_id=send_to, **include_kwargs)
+
             self.add_message_to_queue(bot=bot, user=user, chat=chat_id, message=stored_message['message'],
                                       preview=preview)
 
@@ -787,6 +795,17 @@ class Channel(BaseCommand):
         message.reply_text(text=f'{deleted_count} removed.')
 
         self.create_post_callback_query(bot, update, data, recreate_message=True, *args, **kwargs)
+
+    @run_async
+    def remove_from_queue_callback_query(self, bot: Bot, update: Update, data: Dict, *args, **kwargs):
+        user, message = update.effective_user, update.effective_message
+        chat_id = self.get_current_chat(user)
+
+        self.delete_messages_from_queue(bot=bot, user=user, chat=chat_id,
+                                        **{'message.message_id': data['message'].message_id})
+        message.delete()
+
+        self.create_post_callback_query(bot, update, {'chat_id': chat_id}, *args, **kwargs)
     # Multi Post
 
 
