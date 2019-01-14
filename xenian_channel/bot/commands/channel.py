@@ -512,11 +512,6 @@ class Channel(BaseCommand):
                 'title': message.audio.title,
                 'thumb': message.audio.thumb.file_id,
             }
-        elif message.contact:
-            method = bot.send_contact
-            include_kwargs = {
-                'contact': message.contact,
-            }
         elif message.document:
             method = bot.send_document
             include_kwargs = {
@@ -533,7 +528,7 @@ class Channel(BaseCommand):
                 'duration': message.video.duration,
                 'width': message.video.width,
                 'height': message.video.height,
-                'supports_streaming': message.video.supports_streaming,
+                'supports_streaming': True,
                 'thumb': message.video.thumb.file_id,
             }
         elif message.video_note:
@@ -837,8 +832,13 @@ class Channel(BaseCommand):
         user, message = update.effective_user, update.effective_message
         chat_id = self.get_current_chat(user)
 
+        if not (message.text or message.photo or message.video or message.audio or message.voice or message.document or
+                message.animation or message.sticker or message.video_note):
+            message.reply_text('This type of message is not supported.', reply_message_id=message.message_id)
+            return
+
         self.add_message_to_queue(bot=bot, user=user, chat=chat_id, message=message, preview=True)
-        message.reply_text('Message was added sent the next one.')
+        message.reply_text('Message was added sent the next one.', reply_message_id=message.message_id)
 
         job = job_queue.run_once(
             lambda bot_, _job, **__: self.create_post_callback_query(
@@ -866,7 +866,7 @@ class Channel(BaseCommand):
         progress_bar = TelegramProgressBar(
             bot=message.bot,
             chat_id=message.chat_id,
-            pre_message='Sending images ' + ('as preview' if preview else 'to chat') + '[   {current}/{total}]',
+            pre_message='Sending images ' + ('as preview' if preview else 'to chat') + ' [{current}/{total}]',
             se_message='This could take some time.',
             step_size=2
         )
@@ -878,7 +878,8 @@ class Channel(BaseCommand):
             try:
                 if preview:
                     buttons = [
-                        [MagicButton('Delete', user, callback=self.remove_from_queue_callback_query, data=stored_message)]]
+                        [MagicButton('Delete', user, callback=self.remove_from_queue_callback_query,
+                                     data=stored_message)]]
                     include_kwargs['reply_markup'] = MagicButton.conver_buttons(buttons)
 
                 sleep(0.3)
@@ -915,7 +916,7 @@ class Channel(BaseCommand):
         query = dict(bot=bot, user=user, chat=chat_id, **{'message.message_id': data['message'].message_id})
         old = self.get_message_from_queue(**query)
 
-        if not old['preview']:
+        if not old.get('preview'):
             message.edit_reply_markup()
         else:
             self.delete_messages_from_queue(**query)
