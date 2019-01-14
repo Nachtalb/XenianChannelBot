@@ -1,7 +1,7 @@
 Changelog
 =========
 
-0.0.2 (unreleased)
+0.0.2 (2019-01-14)
 ------------------
 
 - Update ``settings.example.py``
