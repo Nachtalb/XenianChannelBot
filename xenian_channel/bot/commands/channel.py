@@ -393,7 +393,6 @@ class Channel(BaseCommand):
         """
         update.message.reply_text(f'{self.get_user_state(update.message.from_user)}')
 
-    @locked
     @run_async
     def reset_state(self, bot: Bot, update: Update, *args, **kwargs):
         """Debug method to send the users his state
@@ -402,7 +401,20 @@ class Channel(BaseCommand):
             bot (:obj:`telegram.bot.Bot`): Telegram Api Bot Object.
             update (:obj:`telegram.update.Update`): Telegram Api Update Object
         """
-        self.set_user_state(update.effective_user, self.states.IDLE)
+        user, message = update.effective_user, update.effective_message
+        split_text = message.text.split(' ', 1)
+
+        is_admin = f'@{user.username}' in ADMINS
+        if len(split_text) > 1 and is_admin:
+            username = split_text[1].strip('@')
+            user = database.users.find_one({'username': username})
+            if not user:
+                message.reply_text(f'User @{username} could not be found')
+                return
+
+        if self.get_user_state(user) == self.states.SEND_LOCKED and f'@{user.username}' not in ADMINS:
+            return
+        self.set_user_state(user, self.states.IDLE)
 
     @locked
     @run_async
@@ -828,7 +840,7 @@ class Channel(BaseCommand):
         message.reply_text('Message was added sent the next one.')
 
         job = job_queue.run_once(
-            lambda bot_, **__: self.create_post_callback_query(
+            lambda bot_, _job, **__: self.create_post_callback_query(
                 bot_, update, data={'chat_id': chat_id}, recreate_message=True, *args, **kwargs),
             when=1
         )
@@ -853,7 +865,7 @@ class Channel(BaseCommand):
         progress_bar = TelegramProgressBar(
             bot=message.bot,
             chat_id=message.chat_id,
-            pre_message='Sending images ' + ('as preview' if preview else 'to chat'),
+            pre_message='Sending images ' + ('as preview' if preview else 'to chat') + '[   {current}/{total}]',
             se_message='This could take some time.',
             step_size=2
         )
