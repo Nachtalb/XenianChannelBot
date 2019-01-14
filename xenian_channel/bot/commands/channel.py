@@ -841,15 +841,23 @@ class Channel(BaseCommand):
         self.set_user_state(user, self.states.CREATE_SINGLE_POST, data)
 
         settings = self.get_channel_settings(user, chat_id)
+        caption = settings['caption']
         preview = kwargs.get('preview', False)
 
         send_to = message.chat_id if preview else chat_id
 
         messages = list(self.get_messages_from_queue(bot=bot, user=user, chat=chat_id, preview=True))
+
+        progress_bar = TelegramProgressBar(
+            bot=message.bot,
+            chat_id=message.chat_id,
+            pre_message='Sending images ' + ('as preview' if preview else 'to chat'),
+            se_message='This could take some time.',
+            step_size=2
+        )
         self.set_user_state(user, self.states.SEND_LOCKED, chat=chat_id)
-        for stored_message in messages:
-            if settings['caption']:
-                stored_message['message'].caption = settings['caption']
+        for index, stored_message in progress_bar.enumerate(messages):
+            stored_message['message'].caption = caption
             method, include_kwargs = self.get_correct_send_message(bot=message.bot, message_entry=stored_message)
 
             if preview:
