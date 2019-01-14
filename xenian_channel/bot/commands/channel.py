@@ -633,7 +633,8 @@ class Channel(BaseCommand):
 
         real_buttons = MagicButton.conver_buttons(buttons)
 
-        self.create_or_update_button_message(update, text='What do you want to do?', reply_markup=real_buttons)
+        self.create_or_update_button_message(update, text='What do you want to do?', reply_markup=real_buttons,
+                                             create=True)
 
     @run_async
     def channel_actions(self, bot: Bot, update: Update, data: Dict, *args, **kwargs):
