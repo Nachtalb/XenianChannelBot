@@ -1,5 +1,6 @@
 import logging
 from collections import namedtuple
+from functools import wraps
 from typing import Callable, Dict, Generator
 
 from telegram import Bot, Chat, InlineKeyboardMarkup, Message, Update, User
@@ -10,13 +11,32 @@ from telegram.parsemode import ParseMode
 from xenian_channel.bot import job_queue, mongodb_database
 from xenian_channel.bot.commands import database
 from xenian_channel.bot.settings import ADMINS, LOG_LEVEL
-from xenian_channel.bot.utils import get_self
+from xenian_channel.bot.utils import TelegramProgressBar, get_self
 from xenian_channel.bot.utils.magic_buttons import MagicButton
 from .base import BaseCommand
 
 __all__ = ['channel']
 
 Permission = namedtuple('Permission', ['is_admin', 'post', 'delete', 'edit'])
+
+
+def locked(func):
+    @wraps(func)
+    def wrapper(self, *args, **kwargs):
+        update = next(iter([arg for arg in args if isinstance(arg, Update)]), None)
+        if not update:
+            update = kwargs.get('update')
+        if not isinstance(update, Update):
+            return
+
+        user = update.effective_user
+        if self.get_user_state(user) == self.states.SEND_LOCKED:
+            update.effective_message.reply_text('Sending currently in progress, please stand by.')
+            return
+
+        return func(self, *args, **kwargs)
+
+    return wrapper
 
 
 class JobsQueue:
@@ -65,6 +85,7 @@ class Channel(BaseCommand):
         IN_SETTINGS = 'in settings'
         CHANGE_DEFAULT_CAPTION = 'change defalul caption'
         CREATE_SINGLE_POST = 'create single post'
+        SEND_LOCKED = 'send_locked'
 
     def __init__(self):
         self.commands = [
@@ -340,6 +361,7 @@ class Channel(BaseCommand):
         self.channel_settings.update(query, settings_to_save, upsert=True)
 
     # Miscellaneous
+    @locked
     @run_async
     def message_handler(self, bot: Bot, update: Update):
         """Dispatch messages to correct function, defied by the users state
@@ -370,6 +392,7 @@ class Channel(BaseCommand):
         """
         update.message.reply_text(f'{self.get_user_state(update.message.from_user)}')
 
+    @locked
     @run_async
     def reset_state(self, bot: Bot, update: Update, *args, **kwargs):
         """Debug method to send the users his state
@@ -380,6 +403,7 @@ class Channel(BaseCommand):
         """
         self.set_user_state(update.effective_user, self.states.IDLE)
 
+    @locked
     @run_async
     def invalidate(self, bot: Bot, update: Update, *args, **kwargs):
         """Invalidate all open buttons
@@ -403,6 +427,7 @@ class Channel(BaseCommand):
         MagicButton.invalidate_by_user_id(user['id'])
         update.effective_message.reply_text('Invalidated all buttons')
 
+    @locked
     @run_async
     def custom_echo_callback_query(self, bot: Bot, update: Update, text: str, callback: Callable,
                                    send_telegram_data: bool = False, *args, **kwargs):
@@ -431,6 +456,7 @@ class Channel(BaseCommand):
             :obj:`Callable`: Function which can be executes the given actions
         """
 
+        @locked
         @run_async
         def wrapper(*wargs, **wkwargs):
             self.set_user_state(user, state)
@@ -519,6 +545,7 @@ class Channel(BaseCommand):
             pass
 
     # Adding Channels
+    @locked
     @run_async
     def add_channel_start(self, bot: Bot, update: Update):
         """Add a channel to your channels
@@ -538,6 +565,7 @@ class Channel(BaseCommand):
         update.message.reply_text(text=add_to_channel_instruction, parse_mode=ParseMode.MARKDOWN)
         self.set_user_state(update.message.from_user, self.states.ADDING_CHANNEL)
 
+    @locked
     @run_async
     def add_channel_from_message(self, bot: Bot, update: Update):
         """Add a channel to your channels
@@ -566,6 +594,7 @@ class Channel(BaseCommand):
         update.message.reply_text('Channel was added.')
         self.set_user_state(user, self.states.IDLE)
 
+    @locked
     def add_channel(self, chat: Chat, user: User):
         """Add the necessary data of a channel so that the user can work with it
 
@@ -582,6 +611,7 @@ class Channel(BaseCommand):
         self.channel_admin.update(admin_data, admin_data, upsert=True)
 
     # Remove Channel
+    @locked
     @run_async
     def remove_channel_start(self, bot: Bot, update: Update, *args, **kwargs):
         user = update.effective_user
@@ -619,6 +649,7 @@ class Channel(BaseCommand):
         self.create_or_update_button_message(update, text=reply, reply_markup=real_buttons)
         self.set_user_state(user, self.states.REMOVING_CHANNEL)
 
+    @locked
     @run_async
     def remove_channel_from_callback_query(self, bot: Bot, update: Update, data: str, *args, **kwargs):
         user = update.effective_user
@@ -639,6 +670,7 @@ class Channel(BaseCommand):
         return self.channel_admin.delete_one({'chat_id': chat_id, 'user_id': user_id}).deleted_count
 
     # List Channels
+    @locked
     @run_async
     def list_channels(self, bot: Bot, update: Update, *args, **kwargs):
         user, message = update.effective_user, update.effective_message
@@ -665,6 +697,7 @@ class Channel(BaseCommand):
         self.create_or_update_button_message(update, text='What do you want to do?', reply_markup=real_buttons,
                                              create=True)
 
+    @locked
     @run_async
     def channel_actions(self, bot: Bot, update: Update, data: Dict, *args, **kwargs):
         user, message = update.effective_user, update.effective_message
@@ -699,6 +732,7 @@ class Channel(BaseCommand):
                                              reply_markup=MagicButton.conver_buttons(buttons))
 
     # Settings
+    @locked
     @run_async
     def settings_start(self, bot: Bot, update: Update, data: Dict, *args, **kwargs):
         user, message = update.effective_user, update.effective_message
@@ -721,6 +755,7 @@ class Channel(BaseCommand):
         self.create_or_update_button_message(update, text='What do you want to do?',
                                              reply_markup=MagicButton.conver_buttons(buttons))
 
+    @locked
     @run_async
     def change_caption_callback_query(self, bot: Bot, update: Update, data: Dict, *args, **kwargs):
         user, message = update.effective_user, update.effective_message
@@ -736,6 +771,7 @@ class Channel(BaseCommand):
             ]]))
         self.set_user_state(user, self.states.CHANGE_DEFAULT_CAPTION, chat=data)
 
+    @locked
     @run_async
     def change_default_caption(self, bot: Bot, update: Update):
         user, message = update.effective_user, update.effective_message
@@ -752,6 +788,7 @@ class Channel(BaseCommand):
         self.change_caption_callback_query(bot=bot, update=update, data={'chat_id': current_chat})
 
     # Single Post
+    @locked
     @run_async
     def create_post_callback_query(self, bot: Bot, update: Update, data: Dict, recreate_message: bool = False, *args,
                                    **kwargs):
@@ -780,6 +817,7 @@ class Channel(BaseCommand):
             update, text=f'Send me what should be sent to the channel: {len(in_store)} in queue',
             reply_markup=MagicButton.conver_buttons(buttons), create=recreate_message)
 
+    @locked
     @run_async
     def add_message(self, bot: Bot, update: Update, *args, **kwargs):
         user, message = update.effective_user, update.effective_message
@@ -795,6 +833,7 @@ class Channel(BaseCommand):
         )
         JobsQueue(user_id=user.id, job=job, type=JobsQueue.types.SEND_BUTTON_MESSAGE, replaceable=True)
 
+    @locked
     @run_async
     def send_post_callback_query(self, bot: Bot, update: Update, data: Dict, *args, **kwargs):
         user, message = update.effective_user, update.effective_message
@@ -807,6 +846,7 @@ class Channel(BaseCommand):
         send_to = message.chat_id if preview else chat_id
 
         messages = list(self.get_messages_from_queue(bot=bot, user=user, chat=chat_id, preview=True))
+        self.set_user_state(user, self.states.SEND_LOCKED, chat=chat_id)
         for stored_message in messages:
             if settings['caption']:
                 stored_message['message'].caption = settings['caption']
@@ -821,9 +861,11 @@ class Channel(BaseCommand):
 
             self.add_message_to_queue(bot=bot, user=user, chat=chat_id, message=stored_message['message'],
                                       preview=preview)
+        self.set_user_state(user, self.states.CREATE_SINGLE_POST, chat=chat_id)
 
         self.create_post_callback_query(bot, update, data, recreate_message=True, *args, **kwargs)
 
+    @locked
     @run_async
     def clear_queue_callback_query(self, bot: Bot, update: Update, data: Dict, *args, **kwargs):
         user, message = update.effective_user, update.effective_message
