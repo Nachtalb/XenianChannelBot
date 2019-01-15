@@ -1,22 +1,73 @@
 import logging
 from collections import namedtuple
+from functools import wraps
+from time import sleep
 from typing import Callable, Dict, Generator
+from warnings import warn
 
 from telegram import Bot, Chat, InlineKeyboardMarkup, Message, Update, User
-from telegram.error import BadRequest
-from telegram.ext import CallbackQueryHandler, MessageHandler, run_async
+from telegram.error import BadRequest, TimedOut
+from telegram.ext import CallbackQueryHandler, Job, MessageHandler, run_async
 from telegram.parsemode import ParseMode
 
-from xenian_channel.bot import mongodb_database
+from xenian_channel.bot import job_queue, mongodb_database
 from xenian_channel.bot.commands import database
 from xenian_channel.bot.settings import ADMINS, LOG_LEVEL
-from xenian_channel.bot.utils import get_self
+from xenian_channel.bot.utils import TelegramProgressBar, get_self, get_user_chat_link
 from xenian_channel.bot.utils.magic_buttons import MagicButton
 from .base import BaseCommand
 
 __all__ = ['channel']
 
 Permission = namedtuple('Permission', ['is_admin', 'post', 'delete', 'edit'])
+
+
+def locked(func):
+    @wraps(func)
+    def wrapper(self, *args, **kwargs):
+        update = next(iter([arg for arg in args if isinstance(arg, Update)]), None)
+        if not update:
+            update = kwargs.get('update')
+        if not isinstance(update, Update):
+            return
+
+        user = update.effective_user
+        if self.get_user_state(user) == self.states.SEND_LOCKED:
+            update.effective_message.reply_text('Sending currently in progress, please stand by.')
+            return
+
+        return func(self, *args, **kwargs)
+
+    return wrapper
+
+
+class JobsQueue:
+    all_jobs = []
+
+    class types:
+        SEND_BUTTON_MESSAGE = 'send_button_message'
+
+    def __init__(self, user_id: int, job: Job, type: str, replaceable: bool = True):
+        self.user_id = user_id
+        self.job = job
+        self.type = type
+        self.replaceable = replaceable
+        JobsQueue.all_jobs.append(self)
+
+        self.replace()
+
+    def replace(self):
+        if not self.replaceable:
+            return
+
+        jobs = [job for job in JobsQueue.all_jobs if
+                job.user_id == self.user_id and job.type == self.type and job != self]
+        if not jobs:
+            return
+
+        for job in jobs:
+            JobsQueue.all_jobs.remove(job)
+            job.job.schedule_removal()
 
 
 class Channel(BaseCommand):
@@ -36,6 +87,7 @@ class Channel(BaseCommand):
         IN_SETTINGS = 'in settings'
         CHANGE_DEFAULT_CAPTION = 'change defalul caption'
         CREATE_SINGLE_POST = 'create single post'
+        SEND_LOCKED = 'send_locked'
 
     def __init__(self):
         self.commands = [
@@ -85,6 +137,12 @@ class Channel(BaseCommand):
         self.files = mongodb_database.files  # {file: Telegram File Object, hash: generated hash value}
 
         super(Channel, self).__init__()
+
+    def get_chat_username(self, chat: Chat or int, as_link: bool = False) -> str or None:
+        chat_id = self.get_chat_id(chat)
+        found_chat = database.chats.find_one({'id': chat_id})
+        return get_user_chat_link(found_chat, as_link=as_link)
+
 
     def get_messages_from_queue(self, bot: Bot, user: User or int, chat: Chat or int, **query) -> Generator[
         Dict, None, None]:
@@ -142,9 +200,9 @@ class Channel(BaseCommand):
             if create and user.id in self.ram_db_button_message_id:
                 try:
                     self.ram_db_button_message_id[user.id].delete()
-                except BadRequest:
+                    del self.ram_db_button_message_id[user.id]
+                except (BadRequest, KeyError):
                     pass
-                del self.ram_db_button_message_id[user.id]
 
         message = None
         if not create and user.id in self.ram_db_button_message_id and is_button_message:
@@ -311,6 +369,7 @@ class Channel(BaseCommand):
         self.channel_settings.update(query, settings_to_save, upsert=True)
 
     # Miscellaneous
+    @locked
     @run_async
     def message_handler(self, bot: Bot, update: Update):
         """Dispatch messages to correct function, defied by the users state
@@ -349,8 +408,22 @@ class Channel(BaseCommand):
             bot (:obj:`telegram.bot.Bot`): Telegram Api Bot Object.
             update (:obj:`telegram.update.Update`): Telegram Api Update Object
         """
-        self.set_user_state(update.effective_user, self.states.IDLE)
+        user, message = update.effective_user, update.effective_message
+        split_text = message.text.split(' ', 1)
 
+        is_admin = f'@{user.username}' in ADMINS
+        if len(split_text) > 1 and is_admin:
+            username = split_text[1].strip('@')
+            user = database.users.find_one({'username': username})
+            if not user:
+                message.reply_text(f'User @{username} could not be found')
+                return
+
+        if self.get_user_state(user) == self.states.SEND_LOCKED and f'@{user.username}' not in ADMINS:
+            return
+        self.set_user_state(user, self.states.IDLE)
+
+    @locked
     @run_async
     def invalidate(self, bot: Bot, update: Update, *args, **kwargs):
         """Invalidate all open buttons
@@ -374,6 +447,7 @@ class Channel(BaseCommand):
         MagicButton.invalidate_by_user_id(user['id'])
         update.effective_message.reply_text('Invalidated all buttons')
 
+    @locked
     @run_async
     def custom_echo_callback_query(self, bot: Bot, update: Update, text: str, callback: Callable,
                                    send_telegram_data: bool = False, *args, **kwargs):
@@ -402,6 +476,7 @@ class Channel(BaseCommand):
             :obj:`Callable`: Function which can be executes the given actions
         """
 
+        @locked
         @run_async
         def wrapper(*wargs, **wkwargs):
             self.set_user_state(user, state)
@@ -443,11 +518,6 @@ class Channel(BaseCommand):
                 'title': message.audio.title,
                 'thumb': message.audio.thumb.file_id,
             }
-        elif message.contact:
-            method = bot.send_contact
-            include_kwargs = {
-                'contact': message.contact,
-            }
         elif message.document:
             method = bot.send_document
             include_kwargs = {
@@ -464,7 +534,7 @@ class Channel(BaseCommand):
                 'duration': message.video.duration,
                 'width': message.video.width,
                 'height': message.video.height,
-                'supports_streaming': message.video.supports_streaming,
+                'supports_streaming': True,
                 'thumb': message.video.thumb.file_id,
             }
         elif message.video_note:
@@ -490,6 +560,7 @@ class Channel(BaseCommand):
             pass
 
     # Adding Channels
+    @locked
     @run_async
     def add_channel_start(self, bot: Bot, update: Update):
         """Add a channel to your channels
@@ -509,6 +580,7 @@ class Channel(BaseCommand):
         update.message.reply_text(text=add_to_channel_instruction, parse_mode=ParseMode.MARKDOWN)
         self.set_user_state(update.message.from_user, self.states.ADDING_CHANNEL)
 
+    @locked
     @run_async
     def add_channel_from_message(self, bot: Bot, update: Update):
         """Add a channel to your channels
@@ -537,6 +609,7 @@ class Channel(BaseCommand):
         update.message.reply_text('Channel was added.')
         self.set_user_state(user, self.states.IDLE)
 
+    @locked
     def add_channel(self, chat: Chat, user: User):
         """Add the necessary data of a channel so that the user can work with it
 
@@ -553,6 +626,7 @@ class Channel(BaseCommand):
         self.channel_admin.update(admin_data, admin_data, upsert=True)
 
     # Remove Channel
+    @locked
     @run_async
     def remove_channel_start(self, bot: Bot, update: Update, *args, **kwargs):
         user = update.effective_user
@@ -590,6 +664,7 @@ class Channel(BaseCommand):
         self.create_or_update_button_message(update, text=reply, reply_markup=real_buttons)
         self.set_user_state(user, self.states.REMOVING_CHANNEL)
 
+    @locked
     @run_async
     def remove_channel_from_callback_query(self, bot: Bot, update: Update, data: str, *args, **kwargs):
         user = update.effective_user
@@ -610,6 +685,7 @@ class Channel(BaseCommand):
         return self.channel_admin.delete_one({'chat_id': chat_id, 'user_id': user_id}).deleted_count
 
     # List Channels
+    @locked
     @run_async
     def list_channels(self, bot: Bot, update: Update, *args, **kwargs):
         user, message = update.effective_user, update.effective_message
@@ -633,13 +709,14 @@ class Channel(BaseCommand):
 
         real_buttons = MagicButton.conver_buttons(buttons)
 
-        self.create_or_update_button_message(update, text='What do you want to do?', reply_markup=real_buttons)
+        self.create_or_update_button_message(update, text='What do you want to do?', reply_markup=real_buttons,
+                                             create=True)
 
+    @locked
     @run_async
     def channel_actions(self, bot: Bot, update: Update, data: Dict, *args, **kwargs):
         user, message = update.effective_user, update.effective_message
         self.set_user_state(user, self.states.CHANNEL_ACTIONS, data)
-
         buttons = [
             [
                 MagicButton('Create Post',
@@ -665,10 +742,12 @@ class Channel(BaseCommand):
             ]
         ]
 
-        self.create_or_update_button_message(update, text='What do you want to do?',
+        chat_name = self.get_chat_username(data)
+        self.create_or_update_button_message(update, text=f'Channel: {chat_name}\nWhat do you want to do?',
                                              reply_markup=MagicButton.conver_buttons(buttons))
 
     # Settings
+    @locked
     @run_async
     def settings_start(self, bot: Bot, update: Update, data: Dict, *args, **kwargs):
         user, message = update.effective_user, update.effective_message
@@ -682,30 +761,32 @@ class Channel(BaseCommand):
                             callback=self.change_caption_callback_query)
             ],
             [
-                MagicButton('Cancel',
+                MagicButton('Back',
                             user=user,
                             callback=self.channel_actions,
                             data=data)
             ]
         ]
-        self.create_or_update_button_message(update, text='What do you want to do?',
+        chat_name = self.get_chat_username(data)
+        self.create_or_update_button_message(update, text=f'Channel: {chat_name}\nWhat do you want to do?',
                                              reply_markup=MagicButton.conver_buttons(buttons))
 
+    @locked
     @run_async
     def change_caption_callback_query(self, bot: Bot, update: Update, data: Dict, *args, **kwargs):
         user, message = update.effective_user, update.effective_message
 
         setting = self.get_channel_settings(user, data)
-
+        chat_name = self.get_chat_username(data)
         self.create_or_update_button_message(
             update,
-            f'Your default caption at the moment is:\n{setting["caption"] or "Empty"}',
-            parse_mode=ParseMode.MARKDOWN,
+            f'Channel: {chat_name}\nYour default caption at the moment is:\n{setting["caption"] or "Empty"}',
             reply_markup=MagicButton.conver_buttons([[
                 MagicButton('Finished', callback=self.settings_start, data=data, user=user)
             ]]))
         self.set_user_state(user, self.states.CHANGE_DEFAULT_CAPTION, chat=data)
 
+    @locked
     @run_async
     def change_default_caption(self, bot: Bot, update: Update):
         user, message = update.effective_user, update.effective_message
@@ -718,10 +799,11 @@ class Channel(BaseCommand):
             message.reply_text('An error occurred please hit cancel and try again')
             return
 
-        self.set_channel_settings(user, current_chat, {'caption': message.text_markdown})
+        self.set_channel_settings(user, current_chat, {'caption': message.text})
         self.change_caption_callback_query(bot=bot, update=update, data={'chat_id': current_chat})
 
     # Single Post
+    @locked
     @run_async
     def create_post_callback_query(self, bot: Bot, update: Update, data: Dict, recreate_message: bool = False, *args,
                                    **kwargs):
@@ -746,19 +828,33 @@ class Channel(BaseCommand):
         ]
 
         in_store = list(self.get_messages_from_queue(bot=bot, user=user, chat=data, preview=True))
+        chat_name = self.get_chat_username(data)
         self.create_or_update_button_message(
-            update, text=f'Send me what should be sent to the channel: {len(in_store)} in queue',
+            update, text=f'Channel: {chat_name}\nSend me what should be sent to the channel: {len(in_store)} in queue',
             reply_markup=MagicButton.conver_buttons(buttons), create=recreate_message)
 
+    @locked
     @run_async
     def add_message(self, bot: Bot, update: Update, *args, **kwargs):
         user, message = update.effective_user, update.effective_message
         chat_id = self.get_current_chat(user)
 
-        self.add_message_to_queue(bot=bot, user=user, chat=chat_id, message=message, preview=True)
-        message.reply_text('Message was added sent the next one.')
-        self.create_post_callback_query(bot, update, data={'chat_id': chat_id}, recreate_message=True, *args, **kwargs)
+        if not (message.text or message.photo or message.video or message.audio or message.voice or message.document or
+                message.animation or message.sticker or message.video_note):
+            message.reply_text('This type of message is not supported.', reply_message_id=message.message_id)
+            return
 
+        self.add_message_to_queue(bot=bot, user=user, chat=chat_id, message=message, preview=True)
+        message.reply_text('Message was added sent the next one.', reply_message_id=message.message_id)
+
+        job = job_queue.run_once(
+            lambda bot_, _job, **__: self.create_post_callback_query(
+                bot_, update, data={'chat_id': chat_id}, recreate_message=True, *args, **kwargs),
+            when=1
+        )
+        JobsQueue(user_id=user.id, job=job, type=JobsQueue.types.SEND_BUTTON_MESSAGE, replaceable=True)
+
+    @locked
     @run_async
     def send_post_callback_query(self, bot: Bot, update: Update, data: Dict, *args, **kwargs):
         user, message = update.effective_user, update.effective_message
@@ -766,28 +862,48 @@ class Channel(BaseCommand):
         self.set_user_state(user, self.states.CREATE_SINGLE_POST, data)
 
         settings = self.get_channel_settings(user, chat_id)
+        caption = settings['caption']
         preview = kwargs.get('preview', False)
 
         send_to = message.chat_id if preview else chat_id
 
         messages = list(self.get_messages_from_queue(bot=bot, user=user, chat=chat_id, preview=True))
-        for stored_message in messages:
-            if settings['caption']:
-                stored_message['message'].caption = settings['caption']
+        not_sent = []
+
+        progress_bar = TelegramProgressBar(
+            bot=message.bot,
+            chat_id=message.chat_id,
+            pre_message='Sending images ' + ('as preview' if preview else 'to chat') + ' [{current}/{total}]',
+            se_message='This could take some time.',
+            step_size=2
+        )
+        self.set_user_state(user, self.states.SEND_LOCKED, chat=chat_id)
+        for index, stored_message in progress_bar.enumerate(messages):
+            stored_message['message'].caption = caption
             method, include_kwargs = self.get_correct_send_message(bot=message.bot, message_entry=stored_message)
 
-            if preview:
-                buttons = [
-                    [MagicButton('Delete', user, callback=self.remove_from_queue_callback_query, data=stored_message)]]
-                include_kwargs['reply_markup'] = MagicButton.conver_buttons(buttons)
+            try:
+                if preview:
+                    buttons = [
+                        [MagicButton('Delete', user, callback=self.remove_from_queue_callback_query,
+                                     data=stored_message)]]
+                    include_kwargs['reply_markup'] = MagicButton.conver_buttons(buttons)
 
-            method(chat_id=send_to, **include_kwargs)
+                sleep(0.3)
+                method(chat_id=send_to, **include_kwargs)
+                self.add_message_to_queue(bot=bot, user=user, chat=chat_id, message=stored_message['message'],
+                                          preview=preview)
+            except (Exception, BaseException) as e:
+                if not isinstance(e, TimedOut):
+                    warn(e)
+                not_sent.append((method, chat_id, include_kwargs))
+        self.set_user_state(user, self.states.CREATE_SINGLE_POST, chat=chat_id)
 
-            self.add_message_to_queue(bot=bot, user=user, chat=chat_id, message=stored_message['message'],
-                                      preview=preview)
-
+        if not_sent:
+            message.reply_text(f'{len(not_sent)} could not be sent yet, currently the server is the bottleneck')
         self.create_post_callback_query(bot, update, data, recreate_message=True, *args, **kwargs)
 
+    @locked
     @run_async
     def clear_queue_callback_query(self, bot: Bot, update: Update, data: Dict, *args, **kwargs):
         user, message = update.effective_user, update.effective_message
@@ -807,7 +923,7 @@ class Channel(BaseCommand):
         query = dict(bot=bot, user=user, chat=chat_id, **{'message.message_id': data['message'].message_id})
         old = self.get_message_from_queue(**query)
 
-        if not old['preview']:
+        if not old.get('preview'):
             message.edit_reply_markup()
         else:
             self.delete_messages_from_queue(**query)

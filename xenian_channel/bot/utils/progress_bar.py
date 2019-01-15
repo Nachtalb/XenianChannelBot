@@ -222,4 +222,6 @@ class TelegramProgressBar:
          Args:
             items (:obj:`Sized`): A Iterable object which should be iterated over
         """
+        if not items:
+            return []
         yield from enumerate(self(items=items))
