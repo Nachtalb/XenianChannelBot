@@ -23,6 +23,9 @@ def error(bot: Bot, update: Update, error: TelegramError):
     """
     logger.warning('Update "%s" caused error "%s"' % (update, error))
     if update:
+        chat = update.effective_chat
+        if chat.type == chat.CHANNEL:
+            return
         bot.send_message(chat_id=update.effective_chat.id, text='Whoops, there was an error. Please try again.')
 
 

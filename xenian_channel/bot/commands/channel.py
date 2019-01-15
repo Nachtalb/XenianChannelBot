@@ -6,7 +6,7 @@ from typing import Callable, Dict, Generator
 from warnings import warn
 
 import emoji
-from telegram import Bot, Chat, InlineKeyboardMarkup, Message, Update, User
+from telegram import Bot, Chat, InlineKeyboardButton, InlineKeyboardMarkup, Message, Update, User
 from telegram.error import BadRequest, TimedOut
 from telegram.ext import CallbackQueryHandler, Job, MessageHandler, run_async
 from telegram.parsemode import ParseMode
@@ -121,8 +121,13 @@ class Channel(BaseCommand):
                     'pattern': '^magic_button:.*',
                 },
             },
-            # {'command': self.create_post, 'title': 'Add a channel'},
-            # {'command': self.create_posts, 'title': 'Add a channel'},
+            {
+                'command': self.reaction_button_handler,
+                'handler': CallbackQueryHandler,
+                'options': {
+                    'pattern': '^reaction_button:.*',
+                },
+            },
             {
                 'command': self.message_handler,
                 'description': 'Chooses the right thing to do with a message',
@@ -145,7 +150,6 @@ class Channel(BaseCommand):
         found_chat = database.chats.find_one({'id': chat_id})
         return get_user_chat_link(found_chat, as_link=as_link)
 
-
     def get_messages_from_queue(self, bot: Bot, user: User or int, chat: Chat or int, **query) -> Generator[
         Dict, None, None]:
         user_id, chat_id = self.get_user_id(user), self.get_chat_id(chat)
@@ -158,9 +162,9 @@ class Channel(BaseCommand):
             result['message'] = Message.de_json(message['message'], bot=bot)
             yield result
 
-    def get_message_from_queue(self, bot: Bot, user: User or int, chat: Chat or int, **query) -> Dict:
-        user_id, chat_id = self.get_user_id(user), self.get_chat_id(chat)
-        search_query = {'chat_id': chat_id, 'user_id': user_id}
+    def get_message_from_queue(self, bot: Bot, chat: Chat or int, **query) -> Dict:
+        chat_id = self.get_chat_id(chat)
+        search_query = {'chat_id': chat_id}
         search_query.update(query)
 
         message = self.queue.find_one(search_query)
@@ -178,19 +182,13 @@ class Channel(BaseCommand):
 
     def add_message_to_queue(self, bot: Bot, user: User or int, chat: Chat or int, message: Message, **query):
         user_id, chat_id = self.get_user_id(user), self.get_chat_id(chat)
-        default_query = {'chat_id': chat_id, 'user_id': user_id}
+        search_query = {'chat_id': chat_id, 'user_id': user_id, 'message.message_id': message.message_id}
 
-        search_query = default_query.copy()
-        data_query = default_query.copy()
+        query = query or {}
+        query.setdefault('reactions', {})
+        query.update({'message': message.to_dict()})
 
-        search_query.update({'message.message_id': message.message_id})
-        old = self.get_message_from_queue(bot, user, chat, **search_query)
-
-        data_query.update(old)
-        data_query.update({'message': message.to_dict()})
-        data_query.update(query)
-
-        self.queue.update(search_query, data_query, upsert=True)
+        self.queue.update(search_query, {'$set': query}, upsert=True)
 
     def create_or_update_button_message(self, update: Update, *args, **kwargs) -> Message:
         user = update.effective_user
@@ -892,12 +890,15 @@ class Channel(BaseCommand):
         user, message = update.effective_user, update.effective_message
         chat_id = self.get_current_chat(user)
 
+        settings = self.get_channel_settings(user, chat_id)
+
         if not (message.text or message.photo or message.video or message.audio or message.voice or message.document or
                 message.animation or message.sticker or message.video_note):
             message.reply_text('This type of message is not supported.', reply_message_id=message.message_id)
             return
 
-        self.add_message_to_queue(bot=bot, user=user, chat=chat_id, message=message, preview=True)
+        self.add_message_to_queue(bot=bot, user=user, chat=chat_id, message=message, preview=True,
+                                  reactions=dict((reaction, []) for reaction in settings['reactions']))
         message.reply_text('Message was added sent the next one.', reply_message_id=message.message_id)
 
         job = job_queue.run_once(
@@ -916,6 +917,7 @@ class Channel(BaseCommand):
 
         settings = self.get_channel_settings(user, chat_id)
         caption = settings['caption']
+        reactions = dict((reaction, []) for reaction in settings['reactions'])
         preview = kwargs.get('preview', False)
 
         send_to = message.chat_id if preview else chat_id
@@ -933,19 +935,29 @@ class Channel(BaseCommand):
         self.set_user_state(user, self.states.SEND_LOCKED, chat=chat_id)
         for index, stored_message in progress_bar.enumerate(messages):
             stored_message['message'].caption = caption
+            if stored_message.get('reactions') != reactions:
+                stored_message['reactions'] = reactions
+
             method, include_kwargs = self.get_correct_send_message(bot=message.bot, message_entry=stored_message)
 
             try:
+                buttons = []
                 if preview:
-                    buttons = [
-                        [MagicButton('Delete', user, callback=self.remove_from_queue_callback_query,
-                                     data=stored_message)]]
-                    include_kwargs['reply_markup'] = MagicButton.conver_buttons(buttons)
+                    buttons.extend([[
+                        MagicButton('Delete', user, callback=self.remove_from_queue_callback_query,
+                                    data=stored_message).convert()
+                    ]])
+
+                buttons.extend(self.get_reaction_buttons(reactions=reactions, with_callback=not preview))
+
+                include_kwargs['reply_markup'] = MagicButton.conver_buttons(buttons)
 
                 sleep(0.3)
-                method(chat_id=send_to, **include_kwargs)
-                self.add_message_to_queue(bot=bot, user=user, chat=chat_id, message=stored_message['message'],
-                                          preview=preview)
+                new_message = method(chat_id=send_to, **include_kwargs)
+                self.add_message_to_queue(bot=bot, user=user, chat=chat_id,
+                                          message=stored_message['message'] if preview else new_message,
+                                          preview=preview,
+                                          reactions=reactions)
             except (Exception, BaseException) as e:
                 if not isinstance(e, TimedOut):
                     warn(e)
@@ -955,6 +967,40 @@ class Channel(BaseCommand):
         if not_sent:
             message.reply_text(f'{len(not_sent)} could not be sent yet, currently the server is the bottleneck')
         self.create_post_callback_query(bot, update, data, recreate_message=True, *args, **kwargs)
+
+    def get_reaction_buttons(self, reactions: Dict, with_callback=False):
+        return [
+            [
+                InlineKeyboardButton(text=f'{reaction} {len(reactions[reaction]) if reactions[reaction] else ""}',
+                                     callback_data=f'reaction_button:{reaction}' if with_callback else 'nothing')
+                for reaction in list(reactions)[index:index + 4]
+            ]
+            for index in range(0, len(reactions), 4)
+        ]
+
+    def reaction_button_handler(self, bot: Bot, update: Update):
+        user, message, chat = update.effective_user, update.effective_message, update.effective_chat
+        user_id, chat_id = self.get_user_id(user), self.get_chat_id(chat)
+        reaction = update.callback_query.data.replace('reaction_button:', '')
+
+        message_dict = self.get_message_from_queue(bot, chat=chat, **{'message.message_id': message.message_id})
+        reactions = message_dict['reactions']
+
+        if reaction not in reactions or user_id in reactions[reaction]:
+            update.callback_query.answer()
+            return
+
+        for available_reaction in reactions:
+            if user_id in reactions[available_reaction]:
+                reactions[available_reaction].remove(user_id)
+        reactions[reaction].append(user_id)
+
+        self.queue.update({'chat_id': chat_id, 'message.message_id': message.message_id},
+                          {'$set': {'reactions': reactions}})
+
+        buttons = InlineKeyboardMarkup(self.get_reaction_buttons(reactions, with_callback=True))
+        message.edit_reply_markup(reply_markup=buttons)
+        update.callback_query.answer(emoji.emojize('Thanks for voting :thumbs_up:'))
 
     @locked
     @run_async
@@ -971,9 +1017,9 @@ class Channel(BaseCommand):
     @run_async
     def remove_from_queue_callback_query(self, bot: Bot, update: Update, data: Dict, *args, **kwargs):
         user, message = update.effective_user, update.effective_message
-        chat_id = self.get_current_chat(user)
+        user_id, chat_id = self.get_user_id(user), self.get_current_chat(user)
 
-        query = dict(bot=bot, user=user, chat=chat_id, **{'message.message_id': data['message'].message_id})
+        query = dict(bot=bot, user_id=user_id, chat=chat_id, **{'message.message_id': data['message'].message_id})
         old = self.get_message_from_queue(**query)
 
         if not old.get('preview'):

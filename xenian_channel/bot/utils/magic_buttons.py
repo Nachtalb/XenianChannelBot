@@ -128,6 +128,9 @@ class MagicButton:
             :obj:`telegram.inline.inlinekeyboardbutton.InlineKeyboardButton`: The converted button
         """
         button = button or self
+        if isinstance(button, InlineKeyboardButton):
+            return button
+
         if button.url:
             return InlineKeyboardButton(text=button.text, url=button.url)
 
@@ -148,7 +151,7 @@ class MagicButton:
         for row in buttons:
             new_row = []
             for button in row:
-                new_row.append(button.convert())
+                new_row.append(button.convert() if not isinstance(button, InlineKeyboardButton) else button)
             real_buttons.append(new_row)
         return InlineKeyboardMarkup(real_buttons)
 
