@@ -6,6 +6,7 @@ Changelog
 
 - Various improvements (mainly performance and stability)
 - Bug fixes
+- Implement default reactions
 
 
 0.0.2 (2019-01-14)
