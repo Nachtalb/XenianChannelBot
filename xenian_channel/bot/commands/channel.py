@@ -610,7 +610,6 @@ class Channel(BaseCommand):
         update.message.reply_text('Channel was added.')
         self.set_user_state(user, self.states.IDLE)
 
-    @locked
     def add_channel(self, chat: Chat, user: User):
         """Add the necessary data of a channel so that the user can work with it
 
