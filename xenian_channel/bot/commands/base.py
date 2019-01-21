@@ -4,6 +4,7 @@ from typing import Dict
 from telegram import Bot, Update
 from telegram.ext import CommandHandler, Filters, MessageHandler
 
+from xenian_channel.bot.models import TgUser, TgChat, TgMessage
 from xenian_channel.bot.settings import LOG_LEVEL
 
 __all__ = ['BaseCommand']
@@ -75,6 +76,10 @@ class BaseCommand:
         self.message = None
         self.chat = None
 
+        self.tg_chat = None
+        self.tg_user = None
+        self.tg_message = None
+
         BaseCommand.all_commands.append(self)
 
         self.normalize_commands()
@@ -93,6 +98,20 @@ class BaseCommand:
         self.user = update.effective_user
         self.message = update.effective_message
         self.chat = update.effective_chat
+
+        self.tg_user = None
+        self.tg_chat = None
+        self.tg_message = None
+
+        if self.user:
+            self.tg_user = TgUser(self.user)
+            self.tg_user.save()
+        if self.user:
+            self.tg_chat = TgChat(self.chat)
+            self.tg_chat.save()
+        if self.user:
+            self.tg_message = TgMessage.from_object(self.message)
+            self.tg_message.save()
 
     def normalize_commands(self):
         """Normalize commands faults, add defaults and add them to :obj:`BaseCommand.all_commands`

@@ -14,7 +14,7 @@ class TgMessage(TelegramDocument):
     class Meta:
         original = Message
 
-    message_id = LongField(unique=True)
+    message_id = LongField(primary_key=True)
 
     chat = ReferenceField(TgChat)
     from_user = ReferenceField(TgUser)

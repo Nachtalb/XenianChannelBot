@@ -6,12 +6,11 @@ from warnings import warn
 
 import emoji
 from telegram import Bot, Chat, InlineKeyboardButton, InlineKeyboardMarkup, Message, Update, User
-from telegram.error import BadRequest, TimedOut, NetworkError
+from telegram.error import BadRequest, TimedOut
 from telegram.ext import CallbackQueryHandler, Job, MessageHandler, run_async
 from telegram.parsemode import ParseMode
 
 from xenian_channel.bot import job_queue
-from xenian_channel.bot.commands import database
 from xenian_channel.bot.models import ChannelSettings, TgChat, TgMessage, TgUser, UserState
 from xenian_channel.bot.settings import ADMINS, LOG_LEVEL
 from xenian_channel.bot.utils import TelegramProgressBar, get_self
@@ -115,23 +114,8 @@ class ChannelManager(BaseCommand):
 
     def on_call(self, bot: Bot, update: Update):
         super(ChannelManager, self).on_call(bot, update)
-        self.tg_user = None
-        self.tg_chat = None
-        self.tg_message = None
         self._tg_current_channel = None
         self.tg_state = None
-
-        if self.user:
-            self.tg_user = TgUser(self.user)
-            self.tg_user._bot = self.bot
-            self.tg_user.save()
-        if self.user:
-            self.tg_chat = TgChat(self.chat)
-            self.tg_chat._bot = self.bot
-            self.tg_chat.save()
-        if self.user:
-            self.tg_message = TgMessage(self.message)
-            self.tg_message._bot = self.bot
 
         if self.user:
             data = dict(user=self.tg_user)
@@ -550,7 +534,7 @@ class ChannelManager(BaseCommand):
         self.create_or_update_button_message(text='What do you want to do?', reply_markup=real_buttons, create=True)
 
     @run_async
-    def channel_actions(self, bot: Bot, update: Update, data: Dict=None, *args, **kwargs):
+    def channel_actions(self, bot: Bot, update: Update, data: Dict = None, *args, **kwargs):
         if 'channel' in data:
             self.tg_current_channel = data['channel']
         elif self.tg_current_channel is None:
@@ -587,7 +571,7 @@ class ChannelManager(BaseCommand):
 
     # Settings
     @run_async
-    def settings_start(self, bot: Bot, update: Update, data: Dict=None, *args, **kwargs):
+    def settings_start(self, bot: Bot, update: Update, data: Dict = None, *args, **kwargs):
         self.tg_state.state = self.tg_state.IN_SETTINGS
 
         buttons = [
@@ -612,7 +596,7 @@ class ChannelManager(BaseCommand):
                                              reply_markup=MagicButton.conver_buttons(buttons))
 
     @run_async
-    def change_caption_callback_query(self, bot: Bot, update: Update, data: Dict= None, *args, **kwargs):
+    def change_caption_callback_query(self, bot: Bot, update: Update, data: Dict = None, *args, **kwargs):
         chat_name = self.get_username_or_link(self.tg_current_channel)
 
         self.create_or_update_button_message(
@@ -623,7 +607,7 @@ class ChannelManager(BaseCommand):
         self.tg_state.state = self.tg_state.CHANGE_DEFAULT_CAPTION
 
     @run_async
-    def change_reaction_callback_query(self, bot: Bot, update: Update, data: Dict=None, *args, **kwargs):
+    def change_reaction_callback_query(self, bot: Bot, update: Update, data: Dict = None, *args, **kwargs):
         chat_name = self.get_username_or_link(self.tg_current_channel)
 
         reactions = self.tg_current_channel.reactions
@@ -670,7 +654,8 @@ class ChannelManager(BaseCommand):
 
     # Single Post
     @run_async
-    def create_post_callback_query(self, bot: Bot, update: Update, data: Dict=None, recreate_message: bool = False, *args,
+    def create_post_callback_query(self, bot: Bot, update: Update, data: Dict = None, recreate_message: bool = False,
+                                   *args,
                                    **kwargs):
         self.tg_state.state = self.tg_state.CREATE_SINGLE_POST
 
@@ -719,7 +704,7 @@ class ChannelManager(BaseCommand):
         JobsQueue(user_id=self.user.id, job=job, type=JobsQueue.types.SEND_BUTTON_MESSAGE, replaceable=True)
 
     @run_async
-    def send_post_callback_query(self, bot: Bot, update: Update, data: Dict=None, *args, **kwargs):
+    def send_post_callback_query(self, bot: Bot, update: Update, data: Dict = None, *args, **kwargs):
         preview = kwargs.get('preview', False)
 
         send_to = self.chat if preview else self.tg_current_channel.chat
@@ -752,9 +737,9 @@ class ChannelManager(BaseCommand):
                 include_kwargs['reply_markup'] = MagicButton.conver_buttons(buttons)
 
                 if preview:
-                    sleep(1/29)  # In private chat the flood limit is at 30 messages / second
+                    sleep(1 / 29)  # In private chat the flood limit is at 30 messages / second
                 else:
-                    sleep(1/29)  # In private chat the flood limit is at 30 messages / second
+                    sleep(1 / 29)  # In private chat the flood limit is at 30 messages / second
                     # sleep(60/19)  # In groups and channels the limit is at 20 messages / minute
                 # Use 19 and 29 to ensure that a network errors or so causes to exceed the limit
 
@@ -810,7 +795,7 @@ class ChannelManager(BaseCommand):
         self.update.callback_query.answer(emoji.emojize('Thanks for voting :thumbs_up:'))
 
     @run_async
-    def clear_queue_callback_query(self, bot: Bot, update: Update, data: Dict=None, *args, **kwargs):
+    def clear_queue_callback_query(self, bot: Bot, update: Update, data: Dict = None, *args, **kwargs):
         self.tg_current_channel.added_messages = []
         self.tg_current_channel.save()
         self.message.reply_text(text='Queue cleared')
