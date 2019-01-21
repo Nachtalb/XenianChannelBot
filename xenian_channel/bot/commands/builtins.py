@@ -4,7 +4,7 @@ from telegram import Bot, Chat, Update
 from telegram.ext import CommandHandler, MessageHandler
 from telegram.parsemode import ParseMode
 
-from xenian_channel.bot import mongodb_database
+# from xenian_channel.bot import mongodb_database
 from xenian_channel.bot.settings import ADMINS, SUPPORTER
 from xenian_channel.bot.utils import get_user_chat_link, render_template
 from .base import BaseCommand
@@ -35,8 +35,8 @@ class Builtins(BaseCommand):
             },
         ]
 
-        self.admin_db = mongodb_database.admins
-        self.supporter_db = mongodb_database.supporter
+        # self.admin_db = mongodb_database.admins
+        # self.supporter_db = mongodb_database.supporter
 
         super(Builtins, self).__init__()
 

@@ -7,7 +7,7 @@ from telegram.ext import run_async
 
 
 class MagicButton:
-    """Button used of the magic_buttons method of :class:`Channel`
+    """Button used of the magic_buttons method of :class:`ChannelManager`
 
     Attributes:
          text (:obj:`str`): Text represented inside the button
