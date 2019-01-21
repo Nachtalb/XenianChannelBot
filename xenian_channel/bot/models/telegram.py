@@ -16,6 +16,23 @@ class TelegramDocument(Document):
         original = NotImplemented
         load_self = None
 
+    def __new__(cls, *args, **kwargs):
+        first_arg = next(iter(args), None)
+        if first_arg is not None and isinstance(first_arg, TelegramObject):
+            pk_name = 'id'
+            for key, value in cls.fields().items():
+                if key != 'id' and value.primary_key:
+                    pk_name = key
+                    break
+            pk = getattr(first_arg, pk_name, None)
+
+            if pk is not None:
+                obj = cls.objects(**{pk_name: pk}).first()
+                if obj:
+                    obj.self_from_object(first_arg)
+                    return obj
+        return super().__new__(cls)
+
     def __init__(self, *args, **kwargs):
         tg_object = None
         if len(args) > 0 and isinstance(args[0], TelegramObject):
@@ -140,12 +157,10 @@ class TelegramDocument(Document):
             self._bot = object.bot
 
         for key, value in self._get_dict_from_object(self, object).items():
-            if not hasattr(self, '_changed_fields') or self._changed_fields is None:
-                self._changed_fields = []
             self.__setattr__(key, value)
 
         if hasattr(self, 'original_object') and isinstance(self._fields.get('original_object'), DictField):
-           self.original_object = object.to_dict()
+            self.original_object = object.to_dict()
 
     @classmethod
     def from_object(cls, object: TelegramObject):
