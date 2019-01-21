@@ -22,3 +22,6 @@ class TgMessage(TelegramDocument):
     original_object = DictField()
 
     reactions = DictField()
+
+    def __repr__(self):
+        return f'{super().__repr__()} - {self.message_id}'

@@ -22,3 +22,9 @@ class TgChat(TelegramDocument):
     title = StringField(default='')
     first_name = StringField(default='')
     username = StringField(default='')
+
+    def __str__(self):
+        return self.username or self.title or self.id
+
+    def __repr__(self):
+        return f'{super().__repr__()} - {self.__str__()}'

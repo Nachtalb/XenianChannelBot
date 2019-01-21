@@ -26,3 +26,8 @@ class UserState(Document):
         super(UserState, self).__setattr__(key, value)
         if self._initialised and key == 'state':
             self.save()
+
+    def __repr__(self):
+        return f'{str(self.user)}, ' \
+            f'state: {self.state}, ' \
+            f'channel: {str(self.current_channel) if self.current_channel else "None"}'

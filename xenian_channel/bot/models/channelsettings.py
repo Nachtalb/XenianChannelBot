@@ -17,3 +17,6 @@ class ChannelSettings(Document):
     sent_messages = ListField(ReferenceField(TgMessage))
     queued_messages = ListField(ReferenceField(TgMessage))
     added_messages = ListField(ReferenceField(TgMessage))
+
+    def __repr__(self):
+        return f'{str(self.user)} - {str(self.chat)}'

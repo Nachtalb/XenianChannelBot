@@ -18,3 +18,9 @@ class TgUser(TelegramDocument):
     is_bot = BooleanField()
     username = StringField()
     language_code = StringField()
+
+    def __str__(self):
+        return self.username or self.first_name or self.id
+
+    def __repr__(self):
+        return f'{super().__repr__()} - {self.__str__()}'
