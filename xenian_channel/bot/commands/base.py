@@ -106,10 +106,10 @@ class BaseCommand:
         if self.user:
             self.tg_user = TgUser(self.user)
             self.tg_user.save()
-        if self.user:
+        if self.chat:
             self.tg_chat = TgChat(self.chat)
             self.tg_chat.save()
-        if self.user:
+        if self.message:
             self.tg_message = TgMessage.from_object(self.message)
             self.tg_message.save()
 
