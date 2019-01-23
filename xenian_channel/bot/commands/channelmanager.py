@@ -705,14 +705,18 @@ class ChannelManager(BaseCommand):
         self.create_post_callback_query(recreate_message=True, *args, **kwargs)
 
     @run_async
-    def remove_from_queue_callback_query(self, bot: Bot, update: Update, data: Dict, *args, **kwargs):
-        message = data['message']
+    def remove_from_queue_callback_query(self, data: Dict, *args, **kwargs):
+        message = TgMessage.objects(message_id=data['message_id']).first()
+        if message:
+            self.tg_current_channel.added_messages.remove(message)
+            self.tg_current_channel.save()
 
-        self.message.delete()
-        self.tg_current_channel.added_messages.remove(message)
-        self.tg_current_channel.save()
-
-        self.create_post_callback_query(bot, update, *args, **kwargs)
+            message.delete()
+            self.message.delete()
+            self.update.callback_query.answer('Message was removed')
+        else:
+            self.update.callback_query.answer('Could not remove message, contact /support')
+        self.create_post_callback_query(recreate_message=True, *args, **kwargs)
 
 
 channel = ChannelManager()
