@@ -1,7 +1,7 @@
 from typing import Dict, Iterable
 
 from telegram import Bot, Chat
-from telegram.ext import CommandHandler, MessageHandler
+from telegram.ext import CallbackQueryHandler, CommandHandler, MessageHandler
 from telegram.parsemode import ParseMode
 
 # from xenian_channel.bot import mongodb_database
@@ -28,6 +28,15 @@ class Builtins(BaseCommand):
             {'command_name': 'help', 'alias': 'commands'},
             {'command_name': 'contribute', 'alias': 'error'},
             {
+                'command': self.callback_nothing,
+                'description': 'Answer callback calls without doing anything. Can be used for preview buttons or '
+                               'anything alike',
+                'handler': CallbackQueryHandler,
+                'options': {
+                    'pattern': '^nothing$',
+                }
+            },
+            {
                 'command': self.contribute_error,
                 'command_name': 'error',
                 'description': 'Send the supporters and admins a request of any kind',
@@ -39,6 +48,9 @@ class Builtins(BaseCommand):
         # self.supporter_db = mongodb_database.supporter
 
         super(Builtins, self).__init__()
+
+    def callback_nothing(self, *args, **kwargs):
+        self.update.callback_query.answer()
 
     def start(self, *args, **kwargs):
         """Initialize the bot
