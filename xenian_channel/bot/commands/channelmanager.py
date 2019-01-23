@@ -645,6 +645,11 @@ class ChannelManager(BaseCommand):
                     # sleep(60/19)  # In groups and channels the limit is at 20 messages / minute
                 # Use 19 and 29 to ensure that a network errors or so causes to exceed the limit
 
+                if method == self.bot.send_message:
+                    include_kwargs['text'] += f'\n\n{self.tg_current_channel.caption}'
+                else:
+                    include_kwargs['caption'] = self.tg_current_channel.caption
+
                 new_message = method(chat_id=send_to.id, **include_kwargs)
                 if not preview:
                     new_tg_message = TgMessage(new_message, reactions=reaction_dict)
