@@ -5,6 +5,7 @@ from typing import Callable, Dict
 from warnings import warn
 
 import emoji
+from bson import DBRef
 from telegram import Bot, Chat, InlineKeyboardButton, InlineKeyboardMarkup, Message, Update, User
 from telegram.error import BadRequest, TimedOut
 from telegram.ext import CallbackQueryHandler, Job, MessageHandler, run_async
@@ -620,6 +621,10 @@ class ChannelManager(BaseCommand):
         self.tg_state.state = self.tg_state.SEND_LOCKED
 
         for index, stored_message in progress_bar.enumerate(list(self.tg_current_channel.added_messages)):
+            if isinstance(stored_message, DBRef):
+                self.tg_current_channel.added_messages.remove(stored_message)
+                self.tg_current_channel.save()
+                continue
             try:
                 real_message = stored_message.to_object(self.bot)
                 method, include_kwargs = self.get_correct_send_message(real_message)
