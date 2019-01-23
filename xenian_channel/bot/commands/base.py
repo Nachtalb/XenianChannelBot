@@ -208,15 +208,7 @@ class BaseCommand:
         commands_found = list(filter(lambda command: command['command_name'] == name, self.commands))
         return commands_found[0] if commands_found else None
 
-    def not_implemented(self, bot: Bot, update: Update, *args, **kwargs):
-        """
-
-        Args:
-            bot (:obj:`telegram.bot.Bot`): Telegram Api Bot Object.
-            update (:obj:`telegram.update.Update`): Telegram Api Update Object
-            *args (:obj:`list`, optional): Unused other arguments but preserved for compatibility
-            **kwargs (:obj:`dict`, optional): Unused keyword arguments but preserved for compatibility
-        """
+    def not_implemented(self, *args, **kwargs):
         if LOG_LEVEL <= logging.DEBUG:
-            update.message.reply_text('This command was not implemented by the admin.',
-                                      reply_to_message_id=update.message.message_id)
+            self.message.reply_text('This command was not implemented by the admin.',
+                                    reply_to_message_id=self.message.message_id)

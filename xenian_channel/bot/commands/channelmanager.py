@@ -179,44 +179,6 @@ class ChannelManager(BaseCommand):
             self.ram_db_button_message_id[self.user.id] = message
         return message
 
-    def get_user_id(self, user: User or int) -> int:
-        """Get the users id
-
-        Args:
-            user (:obj:`telegram.user.User` | :obj:`int`): The telegram user as a Telegram object or the his id
-
-        Returns:
-            :obj:`str`: The users int
-        """
-        user_id = user
-        if isinstance(user, User):
-            user_id = user.id
-        elif isinstance(user, Dict):
-            user_id = user.get('user_id') or user.get('id')
-
-        if not user_id:
-            raise ValueError('user must not be empty')
-        return user_id
-
-    def get_chat_id(self, chat: Chat or int) -> int:
-        """Get the Chat id
-
-        Args:
-            chat (:obj:`telegram.user.User` | :obj:`int`): The telegram Chat as a Telegram object or the his id
-
-        Returns:
-            :obj:`str`: The chat int
-        """
-        chat_id = chat
-        if isinstance(chat, Chat):
-            chat_id = chat.id
-        elif isinstance(chat, Dict):
-            chat_id = chat.get('chat_id') or chat.get('id')
-
-        if not chat_id:
-            raise ValueError('user must not be empty')
-        return chat_id
-
     def get_permission(self, chat: Chat):
         """Get usual permissions of bot from chat
 
@@ -238,51 +200,37 @@ class ChannelManager(BaseCommand):
 
     # Miscellaneous
     @run_async
-    def message_handler(self, bot: Bot, update: Update):
+    def message_handler(self, *args, **kwargs):
         """Dispatch messages to correct function, defied by the users state
-
-        Args:
-            bot (:obj:`telegram.bot.Bot`): Telegram Api Bot Object.
-            update (:obj:`telegram.update.Update`): Telegram Api Update Object
         """
-        message = update.effective_message
-        if update.channel_post:
+        if self.update.channel_post:
             return
-        user = message.from_user
 
         if self.tg_state.state == self.tg_state.ADDING_CHANNEL:
-            self.add_channel_from_message(bot, update)
+            self.add_channel_from_message()
         elif self.tg_state.state == self.tg_state.CHANGE_DEFAULT_CAPTION:
-            self.change_default_caption(bot, update)
+            self.change_default_caption()
         elif self.tg_state.state == self.tg_state.CHANGE_DEFAULT_REACTION:
-            self.change_default_reaction(bot, update)
+            self.change_default_reaction()
         elif self.tg_state.state == self.tg_state.CREATE_SINGLE_POST:
-            self.add_message(bot, update)
+            self.add_message()
 
     @run_async
-    def echo_state(self, bot: Bot, update: Update):
+    def echo_state(self, *args, **kwargs):
         """Debug method to send the users his state
-
-        Args:
-            bot (:obj:`telegram.bot.Bot`): Telegram Api Bot Object.
-            update (:obj:`telegram.update.Update`): Telegram Api Update Object
         """
-        update.message.reply_text(f'{self.tg_state.state}')
+        self.message.reply_text(f'{self.tg_state.state}')
 
     @run_async
-    def reset_state(self, bot: Bot, update: Update, *args, **kwargs):
+    def reset_state(self, *args, **kwargs):
         """Debug method to send the users his state
-
-        Args:
-            bot (:obj:`telegram.bot.Bot`): Telegram Api Bot Object.
-            update (:obj:`telegram.update.Update`): Telegram Api Update Object
         """
         split_text = self.message.text.split(' ', 1)
 
         is_admin = f'@{self.user.username}' in ADMINS
         if len(split_text) > 1 and is_admin:
             username = split_text[1].strip('@')
-            user = database.users.find_one({'username': username})
+            user = TgUser.objects(username=username).first()
             if not user:
                 self.message.reply_text(f'User @{username} could not be found')
                 return
@@ -290,15 +238,11 @@ class ChannelManager(BaseCommand):
         if self.tg_state.state == self.tg_state.SEND_LOCKED and f'@{self.user.username}' not in ADMINS:
             return
         self.tg_state.state = self.tg_state.IDLE
-        self.list_channels(bot, update)
+        self.list_channels()
 
     @run_async
-    def invalidate(self, bot: Bot, update: Update, *args, **kwargs):
+    def invalidate(self, *args, **kwargs):
         """Invalidate all open buttons
-
-        Args:
-            bot (:obj:`telegram.bot.Bot`): Telegram Api Bot Object.
-            update (:obj:`telegram.update.Update`): Telegram Api Update Object
         """
         split_text = self.message.text.split(' ', 1)
         if len(split_text) > 1 and f'@{self.user.username}' in ADMINS:
@@ -312,23 +256,7 @@ class ChannelManager(BaseCommand):
             del self.ram_db_button_message_id[self.user.id]
 
         MagicButton.invalidate_by_user_id(self.user.id)
-        update.effective_message.reply_text('Invalidated all buttons')
-
-    @run_async
-    def custom_echo_callback_query(self, bot: Bot, update: Update, text: str, callback: Callable,
-                                   send_telegram_data: bool = False, *args, **kwargs):
-        """Echo something to the user after the given callback is run
-
-        Args:
-            bot (:obj:`telegram.bot.Bot`): Telegram Api Bot Object.
-            update (:obj:`telegram.update.Update`): Telegram Api Update Object
-            text (:obj:`str`): Text to send to user
-            callback (:obj:`Callable`): Callable to run before sending user the text
-            send_telegram_data (:obj:`bool`): If bot and update should be sent to the callback
-        """
-        data_to_send = {'bot': bot, 'update': update} if send_telegram_data else {}
-        callback(**data_to_send)
-        update.effective_message.reply_text(text)
+        self.message.reply_text('Invalidated all buttons')
 
     def set_state_and_run(self, state: str, callback: Callable, *args, **kwargs) -> Callable:
         """Set the state and run the given function with bot, update, argxwxxxxxs and kwargs
@@ -348,15 +276,15 @@ class ChannelManager(BaseCommand):
 
         return wrapper
 
-    def get_correct_send_message(self, bot: Bot, message: Message):
-        method = bot.send_message
+    def get_correct_send_message(self, message: Message):
+        method = self.bot.send_message
         include_kwargs = {'text': message.text}
 
         if message.photo:
-            method = bot.send_photo
+            method = self.bot.send_photo
             include_kwargs = {'photo': message.photo[-1], 'caption': message.caption}
         elif message.animation:
-            method = bot.send_animation
+            method = self.bot.send_animation
             include_kwargs = {
                 'animation': message.animation,
                 'caption': message.caption,
@@ -366,12 +294,12 @@ class ChannelManager(BaseCommand):
                 'thumb': message.animation.thumb.file_id if message.animation.thumb else None,
             }
         elif message.sticker:
-            method = bot.send_sticker
+            method = self.bot.send_sticker
             include_kwargs = {
                 'sticker': message.sticker,
             }
         elif message.audio:
-            method = bot.send_audio
+            method = self.bot.send_audio
             include_kwargs = {
                 'audio': message.audio,
                 'caption': message.caption,
@@ -381,7 +309,7 @@ class ChannelManager(BaseCommand):
                 'thumb': message.audio.thumb.file_id if message.audio.thumb else None,
             }
         elif message.document:
-            method = bot.send_document
+            method = self.bot.send_document
             include_kwargs = {
                 'document': message.document,
                 'caption': message.caption,
@@ -389,7 +317,7 @@ class ChannelManager(BaseCommand):
                 'thumb': message.document.thumb.file_id if message.document.thumb else None,
             }
         elif message.video:
-            method = bot.send_video
+            method = self.bot.send_video
             include_kwargs = {
                 'video': message.video,
                 'caption': message.caption,
@@ -400,7 +328,7 @@ class ChannelManager(BaseCommand):
                 'thumb': message.video.thumb.file_id if message.video.thumb else None,
             }
         elif message.video_note:
-            method = bot.send_video_note
+            method = self.bot.send_video_note
             include_kwargs = {
                 'video_note': message.video_note,
                 'duration': message.video_note.duration,
@@ -408,7 +336,7 @@ class ChannelManager(BaseCommand):
                 'thumb': message.video_note.thumb.file_id if message.video_note.thumb else None,
             }
         elif message.voice:
-            method = bot.send_voice
+            method = self.bot.send_voice
             include_kwargs = {
                 'voice': message.voice,
                 'duration': message.voice.duration,
@@ -423,12 +351,8 @@ class ChannelManager(BaseCommand):
 
     # Adding Channels
     @run_async
-    def add_channel_start(self, bot: Bot, update: Update):
+    def add_channel_start(self, *args, **kwargs):
         """Add a channel to your channels
-
-        Args:
-            bot (:obj:`telegram.bot.Bot`): Telegram Api Bot Object.
-            update (:obj:`telegram.update.Update`): Telegram Api Update Object
         """
         add_to_channel_instruction = (
             "*Adding a channel*"
@@ -442,14 +366,10 @@ class ChannelManager(BaseCommand):
         self.tg_state.state = self.tg_state.ADDING_CHANNEL
 
     @run_async
-    def add_channel_from_message(self, bot: Bot, update: Update):
+    def add_channel_from_message(self, *args, **kwargs):
         """Add a channel to your channels
-
-        Args:
-            bot (:obj:`telegram.bot.Bot`): Telegram Api Bot Object.
-            update (:obj:`telegram.update.Update`): Telegram Api Update Object
         """
-        channel_chat = update.message.forward_from_chat
+        channel_chat = self.message.forward_from_chat
         tg_channel_chat = next(iter(TgChat.objects(id=channel_chat.id)), TgChat(channel_chat))
 
         query = {
@@ -478,38 +398,23 @@ class ChannelManager(BaseCommand):
 
         self.message.reply_text('Channel was added.')
         self.tg_state.state = self.tg_state.IDLE
-        self.list_channels(bot, update)
-
-    def add_channel(self, chat: Chat, user: User):
-        """Add the necessary data of a channel so that the user can work with it
-
-        Args:
-            chat (:obj:`telegram.chat.Chat`): Telegram Api Chat Object representing the channel
-            user (:obj:`telegram.user.User`): Telegram Api User Object
-        """
-        database.upsert_chat(chat)
-
-        admin_data = {
-            'user_id': user.id,
-            'chat_id': chat.id
-        }
-        self.channel_admin.update(admin_data, admin_data, upsert=True)
+        self.list_channels()
 
     # Remove Channel
     @run_async
-    def remove_channel_from_callback_query(self, bot: Bot, update: Update, data: str, *args, **kwargs):
+    def remove_channel_from_callback_query(self, *args, **kwargs):
         if self.tg_state.state != self.tg_state.REMOVING_CHANNEL:
-            update.effective_message.reply_text('Your remove request was cancelled due to starting another action')
+            self.message.reply_text('Your remove request was cancelled due to starting another action')
             return
 
         self.tg_current_channel.delete()
 
-        update.effective_message.reply_text('Channel was removed')
-        self.list_channels(bot, update)
+        self.update.effective_message.reply_text('Channel was removed')
+        self.list_channels()
 
     # List Channels
     @run_async
-    def list_channels(self, bot: Bot, update: Update, *args, **kwargs):
+    def list_channels(self, *args, **kwargs):
         self.tg_current_channel = None
         self.tg_state.state = self.tg_state.IDLE
 
@@ -534,7 +439,7 @@ class ChannelManager(BaseCommand):
         self.create_or_update_button_message(text='What do you want to do?', reply_markup=real_buttons, create=True)
 
     @run_async
-    def channel_actions(self, bot: Bot, update: Update, data: Dict = None, *args, **kwargs):
+    def channel_actions(self, data: Dict = None, *args, **kwargs):
         if 'channel' in data:
             self.tg_current_channel = data['channel']
         elif self.tg_current_channel is None:
@@ -571,7 +476,7 @@ class ChannelManager(BaseCommand):
 
     # Settings
     @run_async
-    def settings_start(self, bot: Bot, update: Update, data: Dict = None, *args, **kwargs):
+    def settings_start(self, *args, **kwargs):
         self.tg_state.state = self.tg_state.IN_SETTINGS
 
         buttons = [
@@ -596,7 +501,7 @@ class ChannelManager(BaseCommand):
                                              reply_markup=MagicButton.conver_buttons(buttons))
 
     @run_async
-    def change_caption_callback_query(self, bot: Bot, update: Update, data: Dict = None, *args, **kwargs):
+    def change_caption_callback_query(self, *args, **kwargs):
         chat_name = self.get_username_or_link(self.tg_current_channel)
 
         self.create_or_update_button_message(
@@ -607,7 +512,7 @@ class ChannelManager(BaseCommand):
         self.tg_state.state = self.tg_state.CHANGE_DEFAULT_CAPTION
 
     @run_async
-    def change_reaction_callback_query(self, bot: Bot, update: Update, data: Dict = None, *args, **kwargs):
+    def change_reaction_callback_query(self, *args, **kwargs):
         chat_name = self.get_username_or_link(self.tg_current_channel)
 
         reactions = self.tg_current_channel.reactions
@@ -630,17 +535,17 @@ class ChannelManager(BaseCommand):
         self.tg_state.state = self.tg_state.CHANGE_DEFAULT_REACTION
 
     @run_async
-    def change_default_caption(self, bot: Bot, update: Update):
+    def change_default_caption(self, *args, **kwargs):
         if not self.message.text:
             self.message.reply_text('You have to send me some text or hit cancel.')
             return
 
         self.tg_current_channel.caption = self.message.text
         self.tg_current_channel.save()
-        self.change_caption_callback_query(bot=bot, update=update)
+        self.change_caption_callback_query()
 
     @run_async
-    def change_default_reaction(self, bot: Bot, update: Update):
+    def change_default_reaction(self, *args, **kwargs):
         emojis = emoji.emoji_lis(self.message.text)
         reactions = [reaction['emoji'] for reaction in emojis]
 
@@ -650,13 +555,11 @@ class ChannelManager(BaseCommand):
 
         self.tg_current_channel.reactions = reactions
         self.tg_current_channel.save()
-        self.change_reaction_callback_query(bot=bot, update=update)
+        self.change_reaction_callback_query()
 
     # Single Post
     @run_async
-    def create_post_callback_query(self, bot: Bot, update: Update, data: Dict = None, recreate_message: bool = False,
-                                   *args,
-                                   **kwargs):
+    def create_post_callback_query(self, recreate_message: bool = False, *args, **kwargs):
         self.tg_state.state = self.tg_state.CREATE_SINGLE_POST
 
         buttons = [
@@ -683,7 +586,7 @@ class ChannelManager(BaseCommand):
             reply_markup=MagicButton.conver_buttons(buttons), create=recreate_message)
 
     @run_async
-    def add_message(self, bot: Bot, update: Update, *args, **kwargs):
+    def add_message(self, *args, **kwargs):
         if not (self.message.text or self.message.photo or self.message.video or self.message.audio or
                 self.message.voice or self.message.document or self.message.animation or self.message.sticker or
                 self.message.video_note):
@@ -697,14 +600,13 @@ class ChannelManager(BaseCommand):
         self.message.reply_text('Message was added sent the next one.', disable_notification=True)
 
         job = job_queue.run_once(
-            lambda bot_, _job, **__: self.create_post_callback_query(
-                bot_, update, recreate_message=True, *args, **kwargs),
+            lambda bot_, _job, **__: self.create_post_callback_query(recreate_message=True, *args, **kwargs),
             when=1
         )
         JobsQueue(user_id=self.user.id, job=job, type=JobsQueue.types.SEND_BUTTON_MESSAGE, replaceable=True)
 
     @run_async
-    def send_post_callback_query(self, bot: Bot, update: Update, data: Dict = None, *args, **kwargs):
+    def send_post_callback_query(self, *args, **kwargs):
         preview = kwargs.get('preview', False)
 
         send_to = self.chat if preview else self.tg_current_channel.chat
@@ -720,7 +622,7 @@ class ChannelManager(BaseCommand):
         for index, stored_message in progress_bar.enumerate(list(self.tg_current_channel.added_messages)):
             try:
                 real_message = stored_message.to_object(self.bot)
-                method, include_kwargs = self.get_correct_send_message(bot=self.bot, message=real_message)
+                method, include_kwargs = self.get_correct_send_message(real_message)
 
                 buttons = []
                 reaction_dict = dict((reaction, [])
@@ -729,7 +631,7 @@ class ChannelManager(BaseCommand):
                 if preview:
                     buttons.extend([[
                         MagicButton('Delete', self.user, callback=self.remove_from_queue_callback_query,
-                                    data={'message': stored_message}).convert()
+                                    data={'message_id': stored_message.message_id}).convert()
                     ]])
 
                 buttons.extend(self.get_reaction_buttons(reactions=reaction_dict, with_callback=not preview))
@@ -756,11 +658,11 @@ class ChannelManager(BaseCommand):
             except (BaseException, Exception) as e:
                 self.message.reply_text('An error occurred please contact an admin with /error')
                 self.tg_state.state = self.tg_state.CREATE_SINGLE_POST
-                self.create_post_callback_query(bot, update, recreate_message=True, *args, **kwargs)
+                self.create_post_callback_query(recreate_message=True, *args, **kwargs)
                 raise e
         self.tg_state.state = self.tg_state.CREATE_SINGLE_POST
 
-        self.create_post_callback_query(bot, update, recreate_message=True, *args, **kwargs)
+        self.create_post_callback_query(recreate_message=True, *args, **kwargs)
 
     def get_reaction_buttons(self, reactions: Dict, with_callback=False):
         return [
@@ -772,7 +674,7 @@ class ChannelManager(BaseCommand):
             for index in range(0, len(reactions), 4)
         ]
 
-    def reaction_button_handler(self, bot: Bot, update: Update):
+    def reaction_button_handler(self, *args, **kwargs):
         reaction = self.update.callback_query.data.replace('reaction_button:', '')
         message = TgMessage.objects(message_id=self.message.message_id).first()
 
@@ -795,12 +697,12 @@ class ChannelManager(BaseCommand):
         self.update.callback_query.answer(emoji.emojize('Thanks for voting :thumbs_up:'))
 
     @run_async
-    def clear_queue_callback_query(self, bot: Bot, update: Update, data: Dict = None, *args, **kwargs):
+    def clear_queue_callback_query(self, *args, **kwargs):
         self.tg_current_channel.added_messages = []
         self.tg_current_channel.save()
         self.message.reply_text(text='Queue cleared')
 
-        self.create_post_callback_query(bot, update, recreate_message=True, *args, **kwargs)
+        self.create_post_callback_query(recreate_message=True, *args, **kwargs)
 
     @run_async
     def remove_from_queue_callback_query(self, bot: Bot, update: Update, data: Dict, *args, **kwargs):
