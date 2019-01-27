@@ -4,7 +4,9 @@ Changelog
 0.0.4 (unreleased)
 ------------------
 
-- Nothing changed yet.
+- Almost complete rewrite, everything should almost be the same (frontend)
+- Use MongoEngine instead of pymongo
+- Add DEBUG setting to enable more functionality during development
 
 
 0.0.3 (2019-01-15)
