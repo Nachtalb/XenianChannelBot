@@ -22,7 +22,7 @@ def get_self(bot: Bot) -> User:
     return bot.get_me()
 
 
-def get_user_chat_link(user: User or Chat or Dict, as_link:bool=False) -> str or None:
+def get_user_chat_link(user: User or Chat or Dict, as_link: bool = False) -> str or None:
     """Get the link to a user or chat
 
     Either the @Username or [First Name](tg://user?id=123456) else None
