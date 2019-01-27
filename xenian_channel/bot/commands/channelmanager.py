@@ -707,7 +707,7 @@ class ChannelManager(BaseCommand):
         self.update.callback_query.answer(emoji.emojize('Thanks for voting :thumbs_up:'))
 
     @run_async
-    def clear_queue_callback_query(self):
+    def clear_queue_callback_query(self, *args, **kwargs):
         self.tg_current_channel.added_messages = []
         self.tg_current_channel.save()
         self.message.reply_text(text='Queue cleared')

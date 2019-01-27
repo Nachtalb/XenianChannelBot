@@ -1,5 +1,6 @@
 from functools import wraps
 from typing import Callable, Dict
+from inspect import getfullargspec
 
 from telegram import Bot, Chat, Update, User
 from telegram.error import NetworkError, TimedOut
@@ -93,7 +94,15 @@ def keep_message_args(func):
 
     This decorator must be on top of all other decorators to work
     """
+
     def wrapper(*args, **kwargs):
         func(*args, **kwargs)
 
     return wrapper
+
+
+def wants_update_bot(method: Callable) -> bool:
+    arg_info = getfullargspec(method)
+    if 'bot' in arg_info.args and 'update' in arg_info.args:
+        return True
+    return method.__qualname__.startswith('keep_message_args')

@@ -6,6 +6,7 @@ from telegram.ext import CommandHandler, Filters, MessageHandler
 
 from xenian_channel.bot.models import TgUser, TgChat, TgMessage
 from xenian_channel.bot.settings import LOG_LEVEL
+from xenian_channel.bot.utils.telegram import wants_update_bot
 
 __all__ = ['BaseCommand']
 
@@ -87,7 +88,7 @@ class BaseCommand:
     def on_call_wrapper(self, method: callable):
         def wrapper(bot: Bot, update: Update, *args, **kwargs):
             self.on_call(bot, update)
-            if method.__qualname__.startswith('keep_message_args'):
+            if wants_update_bot(method):
                 method(bot=bot, update=update, *args, **kwargs)
             else:
                 method(*args, **kwargs)
