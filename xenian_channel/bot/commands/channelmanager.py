@@ -1,7 +1,7 @@
 import logging
 from collections import namedtuple
 from time import sleep
-from typing import Callable, Dict
+from typing import Callable, Dict, Tuple
 from warnings import warn
 
 import emoji
@@ -606,6 +606,30 @@ class ChannelManager(BaseCommand):
         )
         JobsQueue(user_id=self.user.id, job=job, type=JobsQueue.types.SEND_BUTTON_MESSAGE, replaceable=True)
 
+    def get_send_info(self, message: TgMessage, is_preview: bool = False) -> Tuple[Callable, Dict, Dict]:
+        real_message = message.to_object(self.bot)
+        method, keywords = self.get_correct_send_message(real_message)
+
+        buttons = []
+
+        if method == self.bot.send_message:
+            keywords['text'] += f'\n\n{self.tg_current_channel.caption}'
+        else:
+            keywords['caption'] = self.tg_current_channel.caption
+
+        if is_preview:
+            buttons.extend([[
+                MagicButton('Delete', self.user, callback=self.remove_from_queue_callback_query,
+                            data={'message_id': message.message_id}).convert()
+            ]])
+
+        reaction_dict = dict((reaction, []) for reaction in message.reactions or self.tg_current_channel.reactions)
+        buttons.extend(self.get_reaction_buttons(reactions=reaction_dict, with_callback=not is_preview))
+
+        keywords['reply_markup'] = MagicButton.conver_buttons(buttons)
+
+        return method, keywords, reaction_dict
+
     @run_async
     def send_post_callback_query(self, *args, **kwargs):
         preview = kwargs.get('preview', False)
@@ -626,22 +650,7 @@ class ChannelManager(BaseCommand):
                 self.tg_current_channel.save()
                 continue
             try:
-                real_message = stored_message.to_object(self.bot)
-                method, include_kwargs = self.get_correct_send_message(real_message)
-
-                buttons = []
-                reaction_dict = dict((reaction, [])
-                                     for reaction in stored_message.reactions or self.tg_current_channel.reactions)
-
-                if preview:
-                    buttons.extend([[
-                        MagicButton('Delete', self.user, callback=self.remove_from_queue_callback_query,
-                                    data={'message_id': stored_message.message_id}).convert()
-                    ]])
-
-                buttons.extend(self.get_reaction_buttons(reactions=reaction_dict, with_callback=not preview))
-
-                include_kwargs['reply_markup'] = MagicButton.conver_buttons(buttons)
+                method, include_kwargs, reaction_dict = self.get_send_info(stored_message, is_preview=preview)
 
                 if preview:
                     sleep(1 / 29)  # In private chat the flood limit is at 30 messages / second
@@ -649,11 +658,6 @@ class ChannelManager(BaseCommand):
                     sleep(1 / 29)  # In private chat the flood limit is at 30 messages / second
                     # sleep(60/19)  # In groups and channels the limit is at 20 messages / minute
                 # Use 19 and 29 to ensure that a network errors or so causes to exceed the limit
-
-                if method == self.bot.send_message:
-                    include_kwargs['text'] += f'\n\n{self.tg_current_channel.caption}'
-                else:
-                    include_kwargs['caption'] = self.tg_current_channel.caption
 
                 new_message = method(chat_id=send_to.id, **include_kwargs)
                 if not preview:
