@@ -16,7 +16,7 @@ class Builtins(BaseCommand):
     """A set of base commands which every bot should have
     """
 
-    Group = 'Bot Helpers'
+    group = 'Bot Helpers'
     data_set_name = 'builtins'
 
     def __init__(self):
