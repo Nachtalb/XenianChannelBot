@@ -5,7 +5,7 @@ from telegram.ext import CallbackQueryHandler, CommandHandler, MessageHandler
 from telegram.parsemode import ParseMode
 
 # from xenian_channel.bot import mongodb_database
-from xenian_channel.bot.settings import ADMINS, SUPPORTER
+from xenian_channel.bot.settings import ADMINS, DEBUG, SUPPORTER
 from xenian_channel.bot.utils import get_user_chat_link, render_template
 from .base import BaseCommand
 
@@ -71,9 +71,12 @@ class Builtins(BaseCommand):
             direct_commands.setdefault(group_name, [])
             indirect_commands.setdefault(group_name, [])
 
+            all_commands = command_class.commands
+            shown_commands = filter(lambda cmd: cmd['handler'] == CommandHandler and (DEBUG or not cmd['hidden']),
+                                    all_commands)
+
             # Direct commands (CommandHandler)
-            for command in [cmd for cmd in command_class.commands
-                            if cmd['handler'] == CommandHandler and not cmd['hidden']]:
+            for command in shown_commands:
                 direct_commands[group_name].append({
                     'command': command['command_name'],
                     'args': command['args'],
@@ -93,6 +96,15 @@ class Builtins(BaseCommand):
 
             if not indirect_commands[group_name]:
                 del indirect_commands[group_name]
+
+        if DEBUG:
+            direct_commands['Bot Helpers'].append({
+                'command': 'restart',
+                'args': [],
+                'title': 'Restart',
+                'description': 'Restart the bot',
+            })
+
         if 'raw' in args:
             reply = render_template('commands_raw.html.mako', direct_commands=direct_commands)
         elif 'rst' in args:
