@@ -49,15 +49,15 @@ class Builtins(BaseCommand):
 
         super(Builtins, self).__init__()
 
-    def callback_nothing(self, *args, **kwargs):
+    def callback_nothing(self):
         self.update.callback_query.answer()
 
-    def start(self, *args, **kwargs):
+    def start(self):
         """Initialize the bot
         """
         self.message.reply_text(render_template('start.html.mako'), parse_mode=ParseMode.HTML)
 
-    def commands(self, *args, **kwargs):
+    def commands(self, args):
         """Generate and show list of available commands
 
         Args:
@@ -111,7 +111,7 @@ class Builtins(BaseCommand):
                                     indirect_commands=indirect_commands)
         self.message.reply_text(reply, parse_mode=ParseMode.HTML)
 
-    def support(self, *args, **kwargs):
+    def support(self):
         """Contact bot maintainer for support of any kind
         """
         self.message.reply_text(
@@ -119,7 +119,7 @@ class Builtins(BaseCommand):
             'error please use "/error ERROR_DESCRIPTION".\n\nIf you like this bot you can give me rating here: '
             'https://telegram.me/storebot?start=xenianchannelbot'.format(SUPPORTER[0]))
 
-    def contribute_error(self, *args, **kwargs):
+    def contribute_error(self):
         """User can use /contribute or /error to let all supporters / admins know of something
         """
         split_text = self.message.text.split(' ', 1)
@@ -159,7 +159,7 @@ class Builtins(BaseCommand):
 
             bot.send_message(chat_id=id, text=message)
 
-    def register(self, *args, **kwargs):
+    def register(self):
         """Register the chat_id for admins and supporters
         """
         data = {'chat_id': self.chat.id}
@@ -178,5 +178,6 @@ class Builtins(BaseCommand):
             reply = 'You are neither an admin nor a supporter.'
 
         self.message.reply_text(reply)
+
 
 builtins = Builtins()

@@ -87,7 +87,10 @@ class BaseCommand:
     def on_call_wrapper(self, method: callable):
         def wrapper(bot: Bot, update: Update, *args, **kwargs):
             self.on_call(bot, update)
-            method(bot, update, *args, **kwargs)
+            if method.__qualname__.startswith('keep_message_args'):
+                method(bot=bot, update=update, *args, **kwargs)
+            else:
+                method(*args, **kwargs)
 
         return wrapper
 

@@ -1,8 +1,8 @@
 from functools import wraps
 from typing import Callable, Dict
 
-from telegram import Bot, Update, User, Chat
-from telegram.error import TimedOut, NetworkError
+from telegram import Bot, Chat, Update, User
+from telegram.error import NetworkError, TimedOut
 
 from . import MWT
 
@@ -70,7 +70,8 @@ def retry_command(retries: int = None, *args, notify_user=True, existing_update:
             try:
                 return func(*args, **kwargs)
             except (TimedOut, NetworkError) as e:
-                if isinstance(e, TimedOut) or (isinstance(e, NetworkError) and 'The write operation timed out' in e.message):
+                if isinstance(e, TimedOut) or (
+                        isinstance(e, NetworkError) and 'The write operation timed out' in e.message):
                     error = e
         else:
             if notify_user and existing_update or (len(args) > 1 and getattr(args[1], 'message', None)):
@@ -85,3 +86,14 @@ def retry_command(retries: int = None, *args, notify_user=True, existing_update:
         return wrapper
 
     return wraps(wrapper)
+
+
+def keep_message_args(func):
+    """This decorator tells the bot to send the bot and update to the given function.
+
+    This decorator must be on top of all other decorators to work
+    """
+    def wrapper(*args, **kwargs):
+        func(*args, **kwargs)
+
+    return wrapper

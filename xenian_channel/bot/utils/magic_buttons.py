@@ -5,6 +5,8 @@ from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup, Update, Us
 from telegram.error import BadRequest
 from telegram.ext import run_async
 
+from xenian_channel.bot.utils.telegram import keep_message_args
+
 
 class MagicButton:
     """Button used of the magic_buttons method of :class:`ChannelManager`
@@ -156,6 +158,7 @@ class MagicButton:
         return InlineKeyboardMarkup(real_buttons)
 
     @staticmethod
+    @keep_message_args
     @run_async
     def message_handler(bot: Bot, update: Update, *args, **kwargs):
         callback_query = update.callback_query
