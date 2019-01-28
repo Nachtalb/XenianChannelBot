@@ -646,6 +646,7 @@ class ChannelManager(BaseCommand):
         filtered_messages = [msg for msg in self.tg_current_channel.added_messages if not isinstance(msg, DBRef)]
 
         if not preview:
+            filtered_messages.extend(self.tg_current_channel.queued_messages)
             self.tg_current_channel.queued_messages = filtered_messages
             self.tg_current_channel.added_messages = []
         else:
@@ -689,7 +690,7 @@ class ChannelManager(BaseCommand):
                 self.tg_current_channel.save()
 
                 self.message.reply_text('An error occurred please contact an admin with /error')
-                self.tg_state.state = self.tg_state.CREATE_SINGLE_POSTnig
+                self.tg_state.state = self.tg_state.CREATE_SINGLE_POST
                 self.create_post_callback_query(recreate_message=True, *args, **kwargs)
                 raise e
 
