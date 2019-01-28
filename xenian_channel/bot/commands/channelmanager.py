@@ -421,7 +421,8 @@ class ChannelManager(BaseCommand):
                 self.create_button('Create Port', callback=self.create_post_callback_query)
             ],
             [
-                self.create_button('Remove', callback=self.remove_channel_from_callback_query),
+                self.create_button('Remove', callback=self.remove_channel_from_callback_query,
+                                   confirmation_requred=True, abort_callback=self.channel_actions),
                 self.create_button('Settings', callback=self.settings_start),
             ],
             [
@@ -444,7 +445,8 @@ class ChannelManager(BaseCommand):
                 self.create_button(text='Reactions', callback=self.change_reaction_callback_query)
             ],
             [
-                self.create_button(text='Reset', callback=self.reset_settings_callback_query),
+                self.create_button(text='Reset', callback=self.reset_settings_callback_query, confirmation_requred=True,
+                                   abort_callback=self.settings_start),
             ],
             [
                 self.create_button('Back', callback=self.channel_actions)
@@ -525,10 +527,12 @@ class ChannelManager(BaseCommand):
         buttons = [
             [
                 self.create_button('Preview', callback=self.send_post_callback_query, data={'preview': True}),
-                self.create_button('Clear Queue', callback=self.clear_queue_callback_query)
+                self.create_button('Clear Queue', callback=self.clear_queue_callback_query, confirmation_requred=True,
+                                   abort_callback=self.create_post_callback_query)
             ],
             [
-                self.create_button('Send', callback=self.send_post_callback_query)
+                self.create_button('Send', callback=self.send_post_callback_query, confirmation_requred=True,
+                                   abort_callback=self.create_post_callback_query)
             ],
             [
                 self.create_button('Back', callback=self.channel_actions)

@@ -1,4 +1,4 @@
-from mongoengine import Document, StringField, DictField
+from mongoengine import Document, StringField, DictField, BooleanField
 
 
 class Button(Document):
@@ -10,6 +10,19 @@ class Button(Document):
 
     prefix = StringField()
 
-    @property
-    def callback_data(self):
-        return f'{self.prefix}:{self.id}'
+    confirmation_requred = BooleanField(default=False)
+    abort_callback = StringField()
+
+    def callback_data(self, answer: bool = None) -> str:
+        suffix = ''
+        if isinstance(answer, bool):
+            suffix = f':{1 if answer else 0}'
+        return f'{self.prefix}:{self.id}{suffix}'
+
+    def extract_answer(self, callback_data: str) -> bool or None:
+        _, answer = callback_data.rsplit(':', 1)
+
+        if answer == str(self.id):
+            return None
+
+        return answer == '1'

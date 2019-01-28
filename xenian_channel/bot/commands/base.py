@@ -214,14 +214,17 @@ class BaseCommand:
                                     reply_to_message_id=self.message.message_id)
 
     def create_button(self, text: str, callback: str or Callable = None, data: Dict = None,
-                      url: str = None, prefix: str = None) -> Button:
+                      url: str = None, prefix: str = None, confirmation_requred: bool = False,
+                      abort_callback: str = None) -> Button:
         prefix = prefix or 'button'
-        callback = callback or None
 
         if isinstance(callback, Callable):
             callback = callback.__name__
+        if isinstance(abort_callback, Callable):
+            abort_callback = abort_callback.__name__
 
-        button = Button(text=text, callback=callback, data=data or {}, url=url or '', prefix=prefix)
+        button = Button(text=text, callback=callback, data=data or {}, url=url or '', prefix=prefix,
+                        confirmation_requred=confirmation_requred, abort_callback=abort_callback)
         button.save()
         return button
 
@@ -229,7 +232,10 @@ class BaseCommand:
         if button.url:
             return InlineKeyboardButton(text=button.text, url=button.url)
 
-        return InlineKeyboardButton(text=button.text, callback_data=button.callback_data)
+        return InlineKeyboardButton(text=button.text, callback_data=button.callback_data())
+
+    def answer_convert_button(self, button: Button, answer_text: str, answer: bool) -> InlineKeyboardButton:
+        return InlineKeyboardButton(text=answer_text, callback_data=button.callback_data(answer))
 
     def convert_buttons(self, buttons: List[List[Button or InlineKeyboardButton]]) -> InlineKeyboardMarkup:
         real_buttons = []
@@ -246,17 +252,37 @@ class BaseCommand:
 
     def get_button(self, button_id: str) -> Button:
         prefix, button_id = button_id.split(':', 1)
+        if ':' in button_id:
+            button_id, _ = button_id.split(':', 1)
         return Button.objects(id=button_id, prefix=prefix).first()
 
-    def get_real_callback(self, button: Button) -> Callable:
-        return getattr(self, button.callback, None)
+    def get_real_callback(self, button: Button, abort_callback: bool = False) -> Callable:
+        if abort_callback:
+            return getattr(self, button.abort_callback, None)
+        else:
+            return getattr(self, button.callback, None)
 
     def button_dispatcher(self):
-        button = self.get_button(self.update.callback_query.data)
+        callback_data = self.update.callback_query.data
+        button = self.get_button(callback_data)
 
         if not button:
-            self.message.reply_text('An error occurred, please contact an administrator /error')
+            self.message.delete()
             return
 
+        answer = button.extract_answer(callback_data)
         method = self.get_real_callback(button)
+        if button.confirmation_requred and answer is None:
+            buttons = self.convert_buttons([[
+                self.answer_convert_button(button, 'Yes', True),
+                self.answer_convert_button(button, 'No', False),
+            ]])
+            self.message.edit_text(text='Are you sure?', reply_markup=buttons)
+            return
+        elif button.confirmation_requred and isinstance(answer, bool) and not answer:
+            method = self.get_real_callback(button, abort_callback=True)
+            button.delete()
+        else:
+            button.delete()
+
         method(button=button)
