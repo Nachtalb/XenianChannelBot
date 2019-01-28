@@ -5,6 +5,7 @@ Changelog
 ------------------
 
 - Make buttons persistent
+- Refactor channel manager command class
 
 
 0.1.2 (2019-01-28)
