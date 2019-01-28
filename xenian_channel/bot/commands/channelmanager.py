@@ -129,19 +129,9 @@ class ChannelManager(BaseCommand):
         self.tg_state.cascade_save()
         self.tg_state.save()
 
-    def get_username_or_link(self, chat: User or Chat or TgChat or TgUser or ChannelSettings):
-        real_chat = chat
-        if isinstance(chat, ChannelSettings):
-            real_chat = chat.chat
-        elif isinstance(chat, TgChat) or isinstance(chat, TgUser):
-            real_chat = chat.to_object(self.bot)
-
-        if hasattr(real_chat, 'name'):
-            return real_chat.name
-        elif real_chat.username:
-            return f'@{real_chat.username}'
-        else:
-            return real_chat.link
+    # # # # # # # # # # # # # # # # # # #
+    # START Helper                      #
+    # # # # # # # # # # # # # # # # # # #
 
     def create_or_update_button_message(self, *args, **kwargs) -> Message:
         current_message = TgMessage.objects(chat=self.tg_chat, is_current_message=True).first()
@@ -169,6 +159,20 @@ class ChannelManager(BaseCommand):
         new_tg_message.save()
         return new_tg_message
 
+    def get_username_or_link(self, chat: User or Chat or TgChat or TgUser or ChannelSettings):
+        real_chat = chat
+        if isinstance(chat, ChannelSettings):
+            real_chat = chat.chat
+        elif isinstance(chat, TgChat) or isinstance(chat, TgUser):
+            real_chat = chat.to_object(self.bot)
+
+        if hasattr(real_chat, 'name'):
+            return real_chat.name
+        elif real_chat.username:
+            return f'@{real_chat.username}'
+        else:
+            return real_chat.link
+
     def get_permission(self, chat: Chat):
         """Get usual permissions of bot from chat
 
@@ -187,71 +191,6 @@ class ChannelManager(BaseCommand):
             delete=chat_member.can_delete_messages,
             edit=chat_member.can_edit_messages,
         )
-
-    # Miscellaneous
-    @run_async
-    def message_handler(self):
-        """Dispatch messages to correct function, defied by the users state
-        """
-        if self.update.channel_post:
-            return
-
-        if self.tg_state.state == self.tg_state.ADDING_CHANNEL:
-            self.add_channel_from_message()
-        elif self.tg_state.state == self.tg_state.CHANGE_DEFAULT_CAPTION:
-            self.change_default_caption()
-        elif self.tg_state.state == self.tg_state.CHANGE_DEFAULT_REACTION:
-            self.change_default_reaction()
-        elif self.tg_state.state == self.tg_state.CREATE_SINGLE_POST:
-            self.add_message()
-
-    @run_async
-    def echo_state(self):
-        """Debug method to send the users his state
-        """
-        self.message.reply_text(f'{self.tg_state.state}')
-
-    @run_async
-    def reset_state(self):
-        """Debug method to send the users his state
-        """
-        split_text = self.message.text.split(' ', 1)
-
-        is_admin = f'@{self.user.username}' in ADMINS
-        if len(split_text) > 1 and is_admin:
-            username = split_text[1].strip('@')
-            user = TgUser.objects(username=username).first()
-            if not user:
-                self.message.reply_text(f'User @{username} could not be found')
-                return
-
-        if self.tg_state.state == self.tg_state.SEND_LOCKED and f'@{self.user.username}' not in ADMINS:
-            return
-
-        for message in TgMessage.objects(chat=self.tg_chat, is_current_message=True):
-            message.is_current_message = False
-            message.save()
-
-        self.tg_state.state = self.tg_state.IDLE
-        self.list_channels()
-
-    def set_state_and_run(self, state: str, callback: Callable, *args, **kwargs) -> Callable:
-        """Set the state and run the given function with bot, update, argxwxxxxxs and kwargs
-
-        Args:
-            state (:obj:`str`): State to which the user shall changed to
-            callback (:obj:`Callable`): Callable to run before sending user the text
-
-        Returns:
-            :obj:`Callable`: Function which can be executes the given actions
-        """
-
-        @run_async
-        def wrapper(*wargs, **wkwargs):
-            self.tg_state.state = state
-            callback(*wargs, **wkwargs)
-
-        return wrapper
 
     def get_correct_send_message(self, message: Message):
         method = self.bot.send_message
@@ -326,7 +265,48 @@ class ChannelManager(BaseCommand):
             print(e)
             pass
 
-    # Adding Channels
+    def get_send_info(self, message: TgMessage, is_preview: bool = False) -> Tuple[Callable, Dict, Dict]:
+        real_message = message.to_object(self.bot)
+        method, keywords = self.get_correct_send_message(real_message)
+
+        buttons = []
+
+        if method == self.bot.send_message:
+            keywords['text'] += f'\n\n{self.tg_current_channel.caption}'
+        else:
+            keywords['caption'] = self.tg_current_channel.caption
+
+        if is_preview:
+            buttons.extend([[
+                self.create_button('Delete', callback=self.remove_from_queue_callback_query,
+                                   data={'message_id': message.message_id})
+            ]])
+
+        reaction_dict = dict((reaction, []) for reaction in message.reactions or self.tg_current_channel.reactions)
+        buttons.extend(self.get_reaction_buttons(reactions=reaction_dict, with_callback=not is_preview))
+
+        keywords['reply_markup'] = self.convert_buttons(buttons)
+
+        return method, keywords, reaction_dict
+
+    def get_reaction_buttons(self, reactions: Dict, with_callback=False):
+        return [
+            [
+                InlineKeyboardButton(text=f'{reaction} {len(reactions[reaction]) if reactions[reaction] else ""}',
+                                     callback_data=f'reaction_button:{reaction}' if with_callback else 'nothing')
+                for reaction in list(reactions)[index:index + 4]
+            ]
+            for index in range(0, len(reactions), 4)
+        ]
+
+    # # # # # # # # # # # # # # # # # # #
+    # END Helper                        #
+    # # # # # # # # # # # # # # # # # # #
+
+    # # # # # # # # # # # # # # # # # # #
+    # START Helper commands             #
+    # # # # # # # # # # # # # # # # # # #
+
     @run_async
     def add_channel_start(self):
         """Add a channel to your channels
@@ -341,6 +321,60 @@ class ChannelManager(BaseCommand):
         )
         self.message.reply_text(text=add_to_channel_instruction, parse_mode=ParseMode.MARKDOWN)
         self.tg_state.state = self.tg_state.ADDING_CHANNEL
+
+    @run_async
+    def echo_state(self):
+        """Debug method to send the users his state
+        """
+        self.message.reply_text(f'{self.tg_state.state}')
+
+    @run_async
+    def reset_state(self):
+        """Debug method to send the users his state
+        """
+        split_text = self.message.text.split(' ', 1)
+
+        is_admin = f'@{self.user.username}' in ADMINS
+        if len(split_text) > 1 and is_admin:
+            username = split_text[1].strip('@')
+            user = TgUser.objects(username=username).first()
+            if not user:
+                self.message.reply_text(f'User @{username} could not be found')
+                return
+
+        if self.tg_state.state == self.tg_state.SEND_LOCKED and f'@{self.user.username}' not in ADMINS:
+            return
+
+        for message in TgMessage.objects(chat=self.tg_chat, is_current_message=True):
+            message.is_current_message = False
+            message.save()
+
+        self.tg_state.state = self.tg_state.IDLE
+        self.list_channels()
+
+    # # # # # # # # # # # # # # # # # # #
+    # END Helper commands               #
+    # # # # # # # # # # # # # # # # # # #
+
+    # # # # # # # # # # # # # # # # # # #
+    # START Message Handlers            #
+    # # # # # # # # # # # # # # # # # # #
+
+    @run_async
+    def message_handler(self):
+        """Dispatch messages to correct function, defied by the users state
+        """
+        if self.update.channel_post:
+            return
+
+        if self.tg_state.state == self.tg_state.ADDING_CHANNEL:
+            self.add_channel_from_message()
+        elif self.tg_state.state == self.tg_state.CHANGE_DEFAULT_CAPTION:
+            self.change_default_caption()
+        elif self.tg_state.state == self.tg_state.CHANGE_DEFAULT_REACTION:
+            self.change_default_reaction()
+        elif self.tg_state.state == self.tg_state.CREATE_SINGLE_POST:
+            self.add_message()
 
     @run_async
     def add_channel_from_message(self):
@@ -377,15 +411,57 @@ class ChannelManager(BaseCommand):
         self.tg_state.state = self.tg_state.IDLE
         self.list_channels()
 
-    # Remove Channel
     @run_async
-    def remove_channel_from_callback_query(self, **kwargs):
-        self.tg_current_channel.delete()
+    def add_message(self, *args, **kwargs):
+        if not (self.message.text or self.message.photo or self.message.video or self.message.audio or
+                self.message.voice or self.message.document or self.message.animation or self.message.sticker or
+                self.message.video_note):
+            self.message.reply_text('This type of message is not supported.', reply_message_id=self.message.message_id)
+            return
 
-        self.update.effective_message.reply_text('Channel was removed')
-        self.list_channels()
+        self.tg_message.save()
+        self.tg_current_channel.added_messages.append(self.tg_message)
+        self.tg_current_channel.save()
 
-    # List Channels
+        self.message.reply_text('Message was added sent the next one.', disable_notification=True)
+
+        job = job_queue.run_once(
+            lambda bot_, _job, **__: self.create_post_callback_query(recreate_message=True, *args, **kwargs),
+            when=1
+        )
+        JobsQueue(user_id=self.user.id, job=job, type=JobsQueue.types.SEND_BUTTON_MESSAGE, replaceable=True)
+
+    @run_async
+    def change_default_caption(self):
+        if not self.message.text:
+            self.message.reply_text('You have to send me some text or hit cancel.')
+            return
+
+        self.tg_current_channel.caption = self.message.text
+        self.tg_current_channel.save()
+        self.change_caption_callback_query()
+
+    @run_async
+    def change_default_reaction(self):
+        emojis = emoji.emoji_lis(self.message.text)
+        reactions = [reaction['emoji'] for reaction in emojis]
+
+        if not self.message.text or not emojis:
+            self.message.reply_text('You have to send me some some reactions (Emoji).')
+            return
+
+        self.tg_current_channel.reactions = reactions
+        self.tg_current_channel.save()
+        self.change_reaction_callback_query()
+
+    # # # # # # # # # # # # # # # # # # #
+    # END Message Handlers              #
+    # # # # # # # # # # # # # # # # # # #
+
+    # # # # # # # # # # # # # # # # # # #
+    # START Menu                        #
+    # # # # # # # # # # # # # # # # # # #
+
     @run_async
     def list_channels(self, **kwargs):
         self.tg_current_channel = None
@@ -438,7 +514,31 @@ class ChannelManager(BaseCommand):
         self.create_or_update_button_message(text=f'Channel: {chat_name}\nWhat do you want to do?',
                                              reply_markup=self.convert_buttons(buttons))
 
-    # Settings
+    @run_async
+    def create_post_callback_query(self, recreate_message: bool = False, **kwargs):
+        self.tg_state.state = self.tg_state.CREATE_SINGLE_POST
+
+        buttons = [
+            [
+                self.create_button('Preview', callback=self.send_post_callback_query, data={'preview': True}),
+                self.create_button('Clear Queue', callback=self.clear_queue_callback_query, confirmation_requred=True,
+                                   abort_callback=self.create_post_callback_query)
+            ],
+            [
+                self.create_button('Send', callback=self.send_post_callback_query, confirmation_requred=True,
+                                   abort_callback=self.create_post_callback_query)
+            ],
+            [
+                self.create_button('Back', callback=self.channel_actions)
+            ]
+        ]
+
+        chat_name = self.get_username_or_link(self.tg_current_channel)
+        added_amount = len(self.tg_current_channel.added_messages)
+        self.create_or_update_button_message(
+            text=f'Channel: {chat_name}\nSend me what should be sent to the channel: {added_amount} in queue',
+            reply_markup=self.convert_buttons(buttons), create=recreate_message)
+
     @run_async
     def settings_start(self, **kwargs):
         self.tg_state.state = self.tg_state.IN_SETTINGS
@@ -459,15 +559,6 @@ class ChannelManager(BaseCommand):
         chat_name = self.get_username_or_link(self.tg_current_channel)
         self.create_or_update_button_message(text=f'Channel: {chat_name}\nWhat do you want to do?',
                                              reply_markup=self.convert_buttons(buttons))
-
-    @run_async
-    def reset_settings_callback_query(self, **kwargs):
-        self.tg_current_channel.caption = ''
-        self.tg_current_channel.reactions = []
-        self.tg_current_channel.save()
-
-        self.message.reply_text('Settings were reset')
-        self.settings_start()
 
     @run_async
     def change_caption_callback_query(self, **kwargs):
@@ -500,99 +591,22 @@ class ChannelManager(BaseCommand):
             reply_markup=self.convert_buttons(buttons))
         self.tg_state.state = self.tg_state.CHANGE_DEFAULT_REACTION
 
-    @run_async
-    def change_default_caption(self):
-        if not self.message.text:
-            self.message.reply_text('You have to send me some text or hit cancel.')
-            return
+    # # # # # # # # # # # # # # # # # # #
+    # ENDD Menu                         #
+    # # # # # # # # # # # # # # # # # # #
 
-        self.tg_current_channel.caption = self.message.text
-        self.tg_current_channel.save()
-        self.change_caption_callback_query()
+    # # # # # # # # # # # # # # # # # # #
+    # START Callback Query              #
+    # # # # # # # # # # # # # # # # # # #
 
     @run_async
-    def change_default_reaction(self):
-        emojis = emoji.emoji_lis(self.message.text)
-        reactions = [reaction['emoji'] for reaction in emojis]
+    def remove_channel_from_callback_query(self, **kwargs):
+        self.tg_current_channel.delete()
 
-        if not self.message.text or not emojis:
-            self.message.reply_text('You have to send me some some reactions (Emoji).')
-            return
+        self.update.effective_message.reply_text('Channel was removed')
+        self.list_channels()
 
-        self.tg_current_channel.reactions = reactions
-        self.tg_current_channel.save()
-        self.change_reaction_callback_query()
-
-    # Single Post
-    @run_async
-    def create_post_callback_query(self, recreate_message: bool = False, **kwargs):
-        self.tg_state.state = self.tg_state.CREATE_SINGLE_POST
-
-        buttons = [
-            [
-                self.create_button('Preview', callback=self.send_post_callback_query, data={'preview': True}),
-                self.create_button('Clear Queue', callback=self.clear_queue_callback_query, confirmation_requred=True,
-                                   abort_callback=self.create_post_callback_query)
-            ],
-            [
-                self.create_button('Send', callback=self.send_post_callback_query, confirmation_requred=True,
-                                   abort_callback=self.create_post_callback_query)
-            ],
-            [
-                self.create_button('Back', callback=self.channel_actions)
-            ]
-        ]
-
-        chat_name = self.get_username_or_link(self.tg_current_channel)
-        added_amount = len(self.tg_current_channel.added_messages)
-        self.create_or_update_button_message(
-            text=f'Channel: {chat_name}\nSend me what should be sent to the channel: {added_amount} in queue',
-            reply_markup=self.convert_buttons(buttons), create=recreate_message)
-
-    @run_async
-    def add_message(self, *args, **kwargs):
-        if not (self.message.text or self.message.photo or self.message.video or self.message.audio or
-                self.message.voice or self.message.document or self.message.animation or self.message.sticker or
-                self.message.video_note):
-            self.message.reply_text('This type of message is not supported.', reply_message_id=self.message.message_id)
-            return
-
-        self.tg_message.save()
-        self.tg_current_channel.added_messages.append(self.tg_message)
-        self.tg_current_channel.save()
-
-        self.message.reply_text('Message was added sent the next one.', disable_notification=True)
-
-        job = job_queue.run_once(
-            lambda bot_, _job, **__: self.create_post_callback_query(recreate_message=True, *args, **kwargs),
-            when=1
-        )
-        JobsQueue(user_id=self.user.id, job=job, type=JobsQueue.types.SEND_BUTTON_MESSAGE, replaceable=True)
-
-    def get_send_info(self, message: TgMessage, is_preview: bool = False) -> Tuple[Callable, Dict, Dict]:
-        real_message = message.to_object(self.bot)
-        method, keywords = self.get_correct_send_message(real_message)
-
-        buttons = []
-
-        if method == self.bot.send_message:
-            keywords['text'] += f'\n\n{self.tg_current_channel.caption}'
-        else:
-            keywords['caption'] = self.tg_current_channel.caption
-
-        if is_preview:
-            buttons.extend([[
-                self.create_button('Delete', callback=self.remove_from_queue_callback_query,
-                                   data={'message_id': message.message_id})
-            ]])
-
-        reaction_dict = dict((reaction, []) for reaction in message.reactions or self.tg_current_channel.reactions)
-        buttons.extend(self.get_reaction_buttons(reactions=reaction_dict, with_callback=not is_preview))
-
-        keywords['reply_markup'] = self.convert_buttons(buttons)
-
-        return method, keywords, reaction_dict
-
+    # Post section
     @run_async
     def send_post_callback_query(self, button: Button = None):
         preview = False
@@ -656,15 +670,27 @@ class ChannelManager(BaseCommand):
         if preview:
             self.create_post_callback_query(recreate_message=True)
 
-    def get_reaction_buttons(self, reactions: Dict, with_callback=False):
-        return [
-            [
-                InlineKeyboardButton(text=f'{reaction} {len(reactions[reaction]) if reactions[reaction] else ""}',
-                                     callback_data=f'reaction_button:{reaction}' if with_callback else 'nothing')
-                for reaction in list(reactions)[index:index + 4]
-            ]
-            for index in range(0, len(reactions), 4)
-        ]
+    @run_async
+    def clear_queue_callback_query(self, **kwargs):
+        self.tg_current_channel.added_messages = []
+        self.tg_current_channel.save()
+        self.message.reply_text(text='Queue cleared')
+
+        self.create_post_callback_query(recreate_message=True)
+
+    @run_async
+    def remove_from_queue_callback_query(self, button: Button):
+        message = TgMessage.objects(message_id=button.data['message_id']).first()
+        if message:
+            self.tg_current_channel.added_messages.remove(message)
+            self.tg_current_channel.save()
+
+            message.delete()
+            self.message.delete()
+            self.update.callback_query.answer('Message was removed')
+        else:
+            self.update.callback_query.answer('Could not remove message, contact /support')
+        self.create_post_callback_query(recreate_message=True)
 
     def reaction_button_handler(self):
         reaction = self.update.callback_query.data.replace('reaction_button:', '')
@@ -688,27 +714,19 @@ class ChannelManager(BaseCommand):
         self.message.edit_reply_markup(reply_markup=buttons)
         self.update.callback_query.answer(emoji.emojize('Thanks for voting :thumbs_up:'))
 
+    # Settings Section
     @run_async
-    def clear_queue_callback_query(self, **kwargs):
-        self.tg_current_channel.added_messages = []
+    def reset_settings_callback_query(self, **kwargs):
+        self.tg_current_channel.caption = ''
+        self.tg_current_channel.reactions = []
         self.tg_current_channel.save()
-        self.message.reply_text(text='Queue cleared')
 
-        self.create_post_callback_query(recreate_message=True)
+        self.message.reply_text('Settings were reset')
+        self.settings_start()
 
-    @run_async
-    def remove_from_queue_callback_query(self, button: Button):
-        message = TgMessage.objects(message_id=button.data['message_id']).first()
-        if message:
-            self.tg_current_channel.added_messages.remove(message)
-            self.tg_current_channel.save()
-
-            message.delete()
-            self.message.delete()
-            self.update.callback_query.answer('Message was removed')
-        else:
-            self.update.callback_query.answer('Could not remove message, contact /support')
-        self.create_post_callback_query(recreate_message=True)
+    # # # # # # # # # # # # # # # # # # #
+    # END Callback Query                #
+    # # # # # # # # # # # # # # # # # # #
 
 
 channel = ChannelManager()
