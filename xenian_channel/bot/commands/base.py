@@ -1,10 +1,10 @@
 import logging
-from typing import Dict
+from typing import Dict, Callable, List
 
-from telegram import Bot, Update
+from telegram import Bot, Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import CommandHandler, Filters, MessageHandler
 
-from xenian_channel.bot.models import TgUser, TgChat, TgMessage
+from xenian_channel.bot.models import TgUser, TgChat, TgMessage, Button
 from xenian_channel.bot.settings import LOG_LEVEL
 from xenian_channel.bot.utils.telegram import wants_update_bot
 
@@ -212,3 +212,51 @@ class BaseCommand:
         if LOG_LEVEL <= logging.DEBUG:
             self.message.reply_text('This command was not implemented by the admin.',
                                     reply_to_message_id=self.message.message_id)
+
+    def create_button(self, text: str, callback: str or Callable = None, data: Dict = None,
+                      url: str = None, prefix: str = None) -> Button:
+        prefix = prefix or 'button'
+        callback = callback or None
+
+        if isinstance(callback, Callable):
+            callback = callback.__name__
+
+        button = Button(text=text, callback=callback, data=data or {}, url=url or '', prefix=prefix)
+        button.save()
+        return button
+
+    def convert_button(self, button: Button) -> InlineKeyboardButton:
+        if button.url:
+            return InlineKeyboardButton(text=button.text, url=button.url)
+
+        return InlineKeyboardButton(text=button.text, callback_data=button.callback_data)
+
+    def convert_buttons(self, buttons: List[List[Button or InlineKeyboardButton]]) -> InlineKeyboardMarkup:
+        real_buttons = []
+        for row in buttons:
+            new_row = []
+            for button in row:
+                if isinstance(button, InlineKeyboardButton):
+                    new_row.append(button)
+                    continue
+
+                new_row.append(self.convert_button(button))
+            real_buttons.append(new_row)
+        return InlineKeyboardMarkup(real_buttons)
+
+    def get_button(self, button_id: str) -> Button:
+        prefix, button_id = button_id.split(':', 1)
+        return Button.objects(id=button_id, prefix=prefix).first()
+
+    def get_real_callback(self, button: Button) -> Callable:
+        return getattr(self, button.callback, None)
+
+    def button_dispatcher(self):
+        button = self.get_button(self.update.callback_query.data)
+
+        if not button:
+            self.message.reply_text('An error occurred, please contact an administrator /error')
+            return
+
+        method = self.get_real_callback(button)
+        method(button=button)
