@@ -1,7 +1,7 @@
 Changelog
 =========
 
-0.1.1 (unreleased)
+0.1.1 (2019-01-28)
 ------------------
 
 - Fix queued messages lost when at least one fails
