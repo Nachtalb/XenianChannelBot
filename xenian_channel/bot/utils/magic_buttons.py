@@ -48,13 +48,8 @@ class MagicButton:
                  no_callback_args: List = None,
                  no_callback_kwargs: Dict = None,
                  ):
-        from xenian_channel.bot import job_queue
         self.id = str(uuid4())
         MagicButton.all_buttons[self.id] = self
-        job_queue.run_once(
-            callback=self.del_self,
-            when=86400,  # 24h
-            name=f'Timout magic button: {self.id}')
 
         self.text = text
         self.user = user
@@ -76,10 +71,6 @@ class MagicButton:
 
         if self.data is None and self.url is None:
             raise AttributeError('Either data or url must be given')
-
-    def del_self(self, *args, **kwargs):
-        if self.id in MagicButton.all_buttons:
-            del MagicButton.all_buttons[self.id]
 
     def __str__(self):
         return str(self.to_dict())
