@@ -8,6 +8,7 @@ Changelog
 - Use MongoEngine instead of pymongo
 - Add DEBUG setting to enable more functionality during development
 - Send messages in background so user doesn't need to wait for the bot
+- Be able to reset settings
 - Read commit messages for full changelog
 
 

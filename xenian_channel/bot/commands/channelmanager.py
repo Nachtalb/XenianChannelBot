@@ -482,14 +482,12 @@ class ChannelManager(BaseCommand):
 
         buttons = [
             [
-                MagicButton(text='Change default caption',
-                            user=self.user,
-                            callback=self.change_caption_callback_query)
+                MagicButton(text='Caption', user=self.user, callback=self.change_caption_callback_query),
+                MagicButton(text='Reactions', user=self.user, callback=self.change_reaction_callback_query)
             ],
             [
-                MagicButton(text='Change default reactions',
-                            user=self.user,
-                            callback=self.change_reaction_callback_query)
+                MagicButton(text='Reset', user=self.user, callback=self.reset_settings_callback_query,
+                            yes_no=True, no_callback=self.settings_start),
             ],
             [
                 MagicButton('Back',
@@ -500,6 +498,15 @@ class ChannelManager(BaseCommand):
         chat_name = self.get_username_or_link(self.tg_current_channel)
         self.create_or_update_button_message(text=f'Channel: {chat_name}\nWhat do you want to do?',
                                              reply_markup=MagicButton.conver_buttons(buttons))
+
+    @run_async
+    def reset_settings_callback_query(self, *args, **kwargs):
+        self.tg_current_channel.caption = ''
+        self.tg_current_channel.reactions = []
+        self.tg_current_channel.save()
+
+        self.message.reply_text('Settings were reset')
+        self.settings_start()
 
     @run_async
     def change_caption_callback_query(self, *args, **kwargs):
@@ -667,7 +674,7 @@ class ChannelManager(BaseCommand):
                 if preview:
                     sleep(1 / 29)  # In private chat the flood limit is at 30 messages / second
                 else:
-                    sleep(60/19)  # In groups and channels the limit is at 20 messages / minute
+                    sleep(60 / 19)  # In groups and channels the limit is at 20 messages / minute
 
                 new_message = method(chat_id=send_to.id, **include_kwargs)
                 if not preview:
