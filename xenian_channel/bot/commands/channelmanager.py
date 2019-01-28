@@ -415,7 +415,7 @@ class ChannelManager(BaseCommand):
 
     # List Channels
     @run_async
-    def list_channels(self):
+    def list_channels(self, *args, **kwargs):
         self.tg_current_channel = None
         self.tg_state.state = self.tg_state.IDLE
 
@@ -477,7 +477,7 @@ class ChannelManager(BaseCommand):
 
     # Settings
     @run_async
-    def settings_start(self):
+    def settings_start(self, *args, **kwargs):
         self.tg_state.state = self.tg_state.IN_SETTINGS
 
         buttons = [
@@ -502,7 +502,7 @@ class ChannelManager(BaseCommand):
                                              reply_markup=MagicButton.conver_buttons(buttons))
 
     @run_async
-    def change_caption_callback_query(self):
+    def change_caption_callback_query(self, *args, **kwargs):
         chat_name = self.get_username_or_link(self.tg_current_channel)
 
         self.create_or_update_button_message(
@@ -513,7 +513,7 @@ class ChannelManager(BaseCommand):
         self.tg_state.state = self.tg_state.CHANGE_DEFAULT_CAPTION
 
     @run_async
-    def change_reaction_callback_query(self):
+    def change_reaction_callback_query(self, *args, **kwargs):
         chat_name = self.get_username_or_link(self.tg_current_channel)
 
         reactions = self.tg_current_channel.reactions
