@@ -33,7 +33,7 @@ class Builtins(BaseCommand):
                                'anything alike',
                 'handler': CallbackQueryHandler,
                 'options': {
-                    'pattern': '^nothing$',
+                    'pattern': '^nothing:\w+$',
                 }
             },
             {

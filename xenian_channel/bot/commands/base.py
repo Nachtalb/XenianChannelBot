@@ -1,10 +1,10 @@
 import logging
-from typing import Dict
+from typing import Dict, Callable, List
 
-from telegram import Bot, Update
+from telegram import Bot, Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import CommandHandler, Filters, MessageHandler
 
-from xenian_channel.bot.models import TgUser, TgChat, TgMessage
+from xenian_channel.bot.models import TgUser, TgChat, TgMessage, Button
 from xenian_channel.bot.settings import LOG_LEVEL
 from xenian_channel.bot.utils.telegram import wants_update_bot
 
@@ -212,3 +212,77 @@ class BaseCommand:
         if LOG_LEVEL <= logging.DEBUG:
             self.message.reply_text('This command was not implemented by the admin.',
                                     reply_to_message_id=self.message.message_id)
+
+    def create_button(self, text: str, callback: str or Callable = None, data: Dict = None,
+                      url: str = None, prefix: str = None, confirmation_requred: bool = False,
+                      abort_callback: str = None) -> Button:
+        prefix = prefix or 'button'
+
+        if isinstance(callback, Callable):
+            callback = callback.__name__
+        if isinstance(abort_callback, Callable):
+            abort_callback = abort_callback.__name__
+
+        button = Button(text=text, callback=callback, data=data or {}, url=url or '', prefix=prefix,
+                        confirmation_requred=confirmation_requred, abort_callback=abort_callback)
+        button.save()
+        return button
+
+    def convert_button(self, button: Button) -> InlineKeyboardButton:
+        if button.url:
+            return InlineKeyboardButton(text=button.text, url=button.url)
+
+        return InlineKeyboardButton(text=button.text, callback_data=button.callback_data())
+
+    def answer_convert_button(self, button: Button, answer_text: str, answer: bool) -> InlineKeyboardButton:
+        return InlineKeyboardButton(text=answer_text, callback_data=button.callback_data(answer))
+
+    def convert_buttons(self, buttons: List[List[Button or InlineKeyboardButton]]) -> InlineKeyboardMarkup:
+        real_buttons = []
+        for row in buttons:
+            new_row = []
+            for button in row:
+                if isinstance(button, InlineKeyboardButton):
+                    new_row.append(button)
+                    continue
+
+                new_row.append(self.convert_button(button))
+            real_buttons.append(new_row)
+        return InlineKeyboardMarkup(real_buttons)
+
+    def get_button(self, button_id: str) -> Button:
+        prefix, button_id = button_id.split(':', 1)
+        if ':' in button_id:
+            button_id, _ = button_id.split(':', 1)
+        return Button.objects(id=button_id, prefix=prefix).first()
+
+    def get_real_callback(self, button: Button, abort_callback: bool = False) -> Callable:
+        if abort_callback:
+            return getattr(self, button.abort_callback, None)
+        else:
+            return getattr(self, button.callback, None)
+
+    def button_dispatcher(self):
+        callback_data = self.update.callback_query.data
+        button = self.get_button(callback_data)
+
+        if not button:
+            self.message.delete()
+            return
+
+        answer = button.extract_answer(callback_data)
+        method = self.get_real_callback(button)
+        if button.confirmation_requred and answer is None:
+            buttons = self.convert_buttons([[
+                self.answer_convert_button(button, 'Yes', True),
+                self.answer_convert_button(button, 'No', False),
+            ]])
+            self.message.edit_text(text='Are you sure?', reply_markup=buttons)
+            return
+        elif button.confirmation_requred and isinstance(answer, bool) and not answer:
+            method = self.get_real_callback(button, abort_callback=True)
+            button.delete()
+        else:
+            button.delete()
+
+        method(button=button)
