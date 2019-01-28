@@ -667,9 +667,7 @@ class ChannelManager(BaseCommand):
                 if preview:
                     sleep(1 / 29)  # In private chat the flood limit is at 30 messages / second
                 else:
-                    sleep(1 / 29)  # In private chat the flood limit is at 30 messages / second
-                    # sleep(60/19)  # In groups and channels the limit is at 20 messages / minute
-                # Use 19 and 29 to ensure that a network errors or so causes to exceed the limit
+                    sleep(60/19)  # In groups and channels the limit is at 20 messages / minute
 
                 new_message = method(chat_id=send_to.id, **include_kwargs)
                 if not preview:
