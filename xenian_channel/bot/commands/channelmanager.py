@@ -467,7 +467,7 @@ class ChannelManager(BaseCommand):
                             callback=self.settings_start)
             ],
             [
-                MagicButton('Cancel', user=self.user, callback=self.list_channels)
+                MagicButton('Back', user=self.user, callback=self.list_channels)
             ]
         ]
 
@@ -583,7 +583,7 @@ class ChannelManager(BaseCommand):
 
             ],
             [
-                MagicButton('Cancel', user=self.user, callback=self.channel_actions)
+                MagicButton('Back', user=self.user, callback=self.channel_actions)
             ]
         ]
 
