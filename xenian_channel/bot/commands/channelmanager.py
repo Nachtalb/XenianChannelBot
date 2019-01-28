@@ -634,6 +634,19 @@ class ChannelManager(BaseCommand):
     def send_post_callback_query(self, *args, **kwargs):
         preview = kwargs.get('preview', False)
 
+        # Move items to queue
+        self.tg_state.state = self.tg_state.SEND_LOCKED
+        filtered_messages = [msg for msg in self.tg_current_channel.added_messages if not isinstance(msg, DBRef)]
+
+        if not preview:
+            self.tg_current_channel.queued_messages = filtered_messages
+            self.tg_current_channel.added_messages = []
+        else:
+            self.tg_current_channel.added_messages = filtered_messages
+        self.tg_current_channel.save()
+        self.tg_state.state = self.tg_state.CREATE_SINGLE_POST
+
+        # Actual sending mechanism
         send_to = self.chat if preview else self.tg_current_channel.chat
 
         progress_bar = TelegramProgressBar(
@@ -642,16 +655,15 @@ class ChannelManager(BaseCommand):
             pre_message='Sending images ' + ('as preview' if preview else 'to chat') + ' [{current}/{total}]',
             se_message='This could take some time.',
         )
-        self.tg_state.state = self.tg_state.SEND_LOCKED
 
-        for index, stored_message in progress_bar.enumerate(list(self.tg_current_channel.added_messages)):
-            if isinstance(stored_message, DBRef):
-                self.tg_current_channel.added_messages.remove(stored_message)
-                self.tg_current_channel.save()
-                continue
+        if not preview:
+            self.create_post_callback_query(recreate_message=True, *args, **kwargs)
+
+        for index, stored_message in progress_bar.enumerate(filtered_messages):
             try:
                 method, include_kwargs, reaction_dict = self.get_send_info(stored_message, is_preview=preview)
 
+                # Prevent hitting flood limit
                 if preview:
                     sleep(1 / 29)  # In private chat the flood limit is at 30 messages / second
                 else:
@@ -664,19 +676,21 @@ class ChannelManager(BaseCommand):
                     new_tg_message = TgMessage(new_message, reactions=reaction_dict)
                     new_tg_message.save()
 
-                    self.tg_current_channel.added_messages.remove(stored_message)
+                    self.tg_current_channel.queued_messages.remove(stored_message)
                     self.tg_current_channel.sent_messages.append(new_tg_message)
-                    self.tg_current_channel.save()
             except TimedOut as e:
                 warn(e)
             except (BaseException, Exception) as e:
+                self.tg_current_channel.save()
+
                 self.message.reply_text('An error occurred please contact an admin with /error')
-                self.tg_state.state = self.tg_state.CREATE_SINGLE_POST
+                self.tg_state.state = self.tg_state.CREATE_SINGLE_POSTnig
                 self.create_post_callback_query(recreate_message=True, *args, **kwargs)
                 raise e
-        self.tg_state.state = self.tg_state.CREATE_SINGLE_POST
 
-        self.create_post_callback_query(recreate_message=True, *args, **kwargs)
+        self.tg_current_channel.save()
+        if preview:
+            self.create_post_callback_query(recreate_message=True, *args, **kwargs)
 
     def get_reaction_buttons(self, reactions: Dict, with_callback=False):
         return [
