@@ -1,3 +1,5 @@
+from threading import Lock
+
 from mongoengine import Document, NULLIFY, ReferenceField, StringField
 
 from xenian_channel.bot.models import ChannelSettings
@@ -22,6 +24,8 @@ class UserState(Document):
 
     current_channel = ReferenceField(ChannelSettings, reverse_delete_rule=NULLIFY)
 
+    save_lock = Lock()
+
     def __setattr__(self, key, value):
         super(UserState, self).__setattr__(key, value)
         if self._initialised and key == 'state':
@@ -31,3 +35,10 @@ class UserState(Document):
         return f'{str(self.user)}, ' \
             f'state: {self.state}, ' \
             f'channel: {str(self.current_channel) if self.current_channel else "None"}'
+
+    def save(self, *args, **kwargs):
+        try:
+            self.save_lock.acquire()
+            super().save(*args, **kwargs)
+        finally:
+            self.save_lock.release()
