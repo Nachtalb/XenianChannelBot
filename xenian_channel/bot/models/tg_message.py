@@ -1,4 +1,4 @@
-from mongoengine import DictField, LongField, ReferenceField
+from mongoengine import DictField, LongField, ReferenceField, BooleanField
 from telegram import Message
 
 from xenian_channel.bot.models.telegram import TelegramDocument
@@ -22,6 +22,8 @@ class TgMessage(TelegramDocument):
     original_object = DictField()
 
     reactions = DictField()
+
+    is_current_message = BooleanField(default=False)
 
     def __repr__(self):
         return f'{super().__repr__()} - {self.message_id}'

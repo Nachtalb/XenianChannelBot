@@ -144,31 +144,30 @@ class ChannelManager(BaseCommand):
             return real_chat.link
 
     def create_or_update_button_message(self, *args, **kwargs) -> Message:
-        is_button_message = ('reply_markup' in kwargs or any([isinstance(arg, InlineKeyboardMarkup) for arg in args]))
+        current_message = TgMessage.objects(chat=self.tg_chat, is_current_message=True).first()
 
-        create = False
-        if 'create' in kwargs:
-            create = kwargs.pop('create')
-            if create and self.user.id in self.ram_db_button_message_id:
+        if not current_message or kwargs.get('create', False):
+            new_message = self.message.reply_text(*args, **kwargs)
+            if current_message:
                 try:
-                    self.ram_db_button_message_id[self.user.id].delete()
-                    del self.ram_db_button_message_id[self.user.id]
-                except (BadRequest, KeyError):
+                    self.bot.delete_message(chat_id=self.chat.id, message_id=current_message.message_id)
+                except BadRequest:
                     pass
+        else:
+            if 'text' in kwargs:
+                kwargs.pop('text')
+            new_message = self.bot.edit_message_text(text=kwargs.get('text', current_message.original_object['text']),
+                                                     chat_id=self.chat.id, message_id=current_message.message_id,
+                                                     **kwargs)
 
-        message = None
-        if not create and self.user.id in self.ram_db_button_message_id and is_button_message:
-            try:
-                message = self.ram_db_button_message_id[self.user.id].edit_text(*args, **kwargs)
-            except BadRequest:
-                pass
+        if current_message:
+            current_message.is_current_message = False
+            current_message.save()
 
-        if not message:
-            message = self.message.reply_text(*args, **kwargs)
-
-        if is_button_message:
-            self.ram_db_button_message_id[self.user.id] = message
-        return message
+        new_tg_message = TgMessage.from_object(new_message)
+        new_tg_message.is_current_message = True
+        new_tg_message.save()
+        return new_tg_message
 
     def get_permission(self, chat: Chat):
         """Get usual permissions of bot from chat
@@ -228,6 +227,11 @@ class ChannelManager(BaseCommand):
 
         if self.tg_state.state == self.tg_state.SEND_LOCKED and f'@{self.user.username}' not in ADMINS:
             return
+
+        for message in TgMessage.objects(chat=self.tg_chat, is_current_message=True):
+            message.is_current_message = False
+            message.save()
+
         self.tg_state.state = self.tg_state.IDLE
         self.list_channels()
 
