@@ -689,7 +689,7 @@ class ChannelManager(BaseCommand):
                 self.tg_current_channel.save()
 
                 self.message.reply_text('An error occurred please contact an admin with /error')
-                self.tg_state.state = self.tg_state.CREATE_SINGLE_POSTnig
+                self.tg_state.state = self.tg_state.CREATE_SINGLE_POST
                 self.create_post_callback_query(recreate_message=True, *args, **kwargs)
                 raise e
 
