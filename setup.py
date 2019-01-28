@@ -23,7 +23,7 @@ setup(name='XenianChannelBot',
           'htmlmin',
           'mako',
           'mr.developer',
-          'pymongo',
+          'mongoengine',
           'python-telegram-bot',
       ],
 

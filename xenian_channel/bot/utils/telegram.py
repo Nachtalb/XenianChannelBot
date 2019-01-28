@@ -1,8 +1,9 @@
 from functools import wraps
 from typing import Callable, Dict
+from inspect import getfullargspec
 
-from telegram import Bot, Update, User, Chat
-from telegram.error import TimedOut, NetworkError
+from telegram import Bot, Chat, Update, User
+from telegram.error import NetworkError, TimedOut
 
 from . import MWT
 
@@ -22,7 +23,7 @@ def get_self(bot: Bot) -> User:
     return bot.get_me()
 
 
-def get_user_chat_link(user: User or Chat or Dict, as_link:bool=False) -> str or None:
+def get_user_chat_link(user: User or Chat or Dict, as_link: bool = False) -> str or None:
     """Get the link to a user or chat
 
     Either the @Username or [First Name](tg://user?id=123456) else None
@@ -70,7 +71,8 @@ def retry_command(retries: int = None, *args, notify_user=True, existing_update:
             try:
                 return func(*args, **kwargs)
             except (TimedOut, NetworkError) as e:
-                if isinstance(e, TimedOut) or (isinstance(e, NetworkError) and 'The write operation timed out' in e.message):
+                if isinstance(e, TimedOut) or (
+                        isinstance(e, NetworkError) and 'The write operation timed out' in e.message):
                     error = e
         else:
             if notify_user and existing_update or (len(args) > 1 and getattr(args[1], 'message', None)):
@@ -85,3 +87,22 @@ def retry_command(retries: int = None, *args, notify_user=True, existing_update:
         return wrapper
 
     return wraps(wrapper)
+
+
+def keep_message_args(func):
+    """This decorator tells the bot to send the bot and update to the given function.
+
+    This decorator must be on top of all other decorators to work
+    """
+
+    def wrapper(*args, **kwargs):
+        func(*args, **kwargs)
+
+    return wrapper
+
+
+def wants_update_bot(method: Callable) -> bool:
+    arg_info = getfullargspec(method)
+    if 'bot' in arg_info.args and 'update' in arg_info.args:
+        return True
+    return method.__qualname__.startswith('keep_message_args')

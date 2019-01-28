@@ -5,9 +5,11 @@ from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup, Update, Us
 from telegram.error import BadRequest
 from telegram.ext import run_async
 
+from xenian_channel.bot.utils.telegram import keep_message_args, wants_update_bot
+
 
 class MagicButton:
-    """Button used of the magic_buttons method of :class:`Channel`
+    """Button used of the magic_buttons method of :class:`ChannelManager`
 
     Attributes:
          text (:obj:`str`): Text represented inside the button
@@ -156,6 +158,7 @@ class MagicButton:
         return InlineKeyboardMarkup(real_buttons)
 
     @staticmethod
+    @keep_message_args
     @run_async
     def message_handler(bot: Bot, update: Update, *args, **kwargs):
         callback_query = update.callback_query
@@ -187,7 +190,10 @@ class MagicButton:
                 original_button = MagicButton.all_buttons.get(button.data['original'])
                 original_data = original_button.data
 
-            method(bot=Bot, update=update, data=original_data, *custom_args, **custom_kwargs)
+            if wants_update_bot(method):
+                method(bot=Bot, update=update, data=original_data, *custom_args, **custom_kwargs)
+            else:
+                method(data=original_data, *custom_args, **custom_kwargs)
             if button.data.get('yes_no_answer'):
                 try:
                     message.delete()

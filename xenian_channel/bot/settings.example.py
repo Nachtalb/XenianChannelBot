@@ -25,6 +25,7 @@ MODE = {
 }
 
 LOG_LEVEL = logging.DEBUG
+DEBUG = True
 
 MONGODB_CONFIGURATION = {
     'host': 'localhost',  # default: localhost

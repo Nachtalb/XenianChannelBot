@@ -2,9 +2,11 @@ import logging
 from typing import Dict
 
 from telegram import Bot, Update
-from telegram.ext import CallbackQueryHandler, CommandHandler, Filters, MessageHandler
+from telegram.ext import CommandHandler, Filters, MessageHandler
 
+from xenian_channel.bot.models import TgUser, TgChat, TgMessage
 from xenian_channel.bot.settings import LOG_LEVEL
+from xenian_channel.bot.utils.telegram import wants_update_bot
 
 __all__ = ['BaseCommand']
 
@@ -69,9 +71,51 @@ class BaseCommand:
         Notes:
             super(BaseCommand, self).__init__() has to be run after the self.commands setup
         """
+        self.bot = None
+        self.update = None
+        self.user = None
+        self.message = None
+        self.chat = None
+
+        self.tg_chat = None
+        self.tg_user = None
+        self.tg_message = None
+
         BaseCommand.all_commands.append(self)
 
         self.normalize_commands()
+
+    def on_call_wrapper(self, method: callable):
+        def wrapper(bot: Bot, update: Update, *args, **kwargs):
+            self.on_call(bot, update)
+            if wants_update_bot(method):
+                method(bot=bot, update=update, *args, **kwargs)
+            else:
+                method(*args, **kwargs)
+
+        return wrapper
+
+    def on_call(self, bot: Bot, update: Update):
+        self.bot = bot
+        self.update = update
+
+        self.user = update.effective_user
+        self.message = update.effective_message
+        self.chat = update.effective_chat
+
+        self.tg_user = None
+        self.tg_chat = None
+        self.tg_message = None
+
+        if self.user:
+            self.tg_user = TgUser(self.user)
+            self.tg_user.save()
+        if self.chat:
+            self.tg_chat = TgChat(self.chat)
+            self.tg_chat.save()
+        if self.message:
+            self.tg_message = TgMessage.from_object(self.message)
+            self.tg_message.save()
 
     def normalize_commands(self):
         """Normalize commands faults, add defaults and add them to :obj:`BaseCommand.all_commands`
@@ -82,16 +126,12 @@ class BaseCommand:
             if isinstance(command.get('alias', None), str):
                 alias_commands.append(command)
                 continue
-            if command['command'].__name__ == '<lambda>' and (not command.get('command_name') and
-                                                              not command.get('handler') == CallbackQueryHandler):
-                raise ValueError('If "command_wrapper" is used a "command_name" has to be defined or the handler must '
-                                 'be an CallbackQueryHandeler!')
 
             command = {
                 'title': command.get('title', None) or command['command'].__name__.capitalize().replace('_', ' '),
                 'description': command.get('description', ''),
                 'command_name': command.get('command_name', command['command'].__name__),
-                'command': command['command'],
+                'command': self.on_call_wrapper(command['command']),
                 'handler': command.get('handler', CommandHandler),
                 'options': command.get('options', {}),
                 'hidden': command.get('hidden', False),
@@ -172,18 +212,7 @@ class BaseCommand:
         commands_found = list(filter(lambda command: command['command_name'] == name, self.commands))
         return commands_found[0] if commands_found else None
 
-    def command_wrapper(self, method: callable, *args, **kwargs):
-        return lambda bot, update, *args2, **kwargs2: method(bot, update, *args2, *args, **kwargs2, **kwargs)
-
-    def not_implemented(self, bot: Bot, update: Update, *args, **kwargs):
-        """
-
-        Args:
-            bot (:obj:`telegram.bot.Bot`): Telegram Api Bot Object.
-            update (:obj:`telegram.update.Update`): Telegram Api Update Object
-            *args (:obj:`list`, optional): Unused other arguments but preserved for compatibility
-            **kwargs (:obj:`dict`, optional): Unused keyword arguments but preserved for compatibility
-        """
+    def not_implemented(self, *args, **kwargs):
         if LOG_LEVEL <= logging.DEBUG:
-            update.message.reply_text('This command was not implemented by the admin.',
-                                      reply_to_message_id=update.message.message_id)
+            self.message.reply_text('This command was not implemented by the admin.',
+                                    reply_to_message_id=self.message.message_id)
