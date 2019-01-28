@@ -1,7 +1,7 @@
 Changelog
 =========
 
-0.0.4 (unreleased)
+0.1.0 (2019-01-28)
 ------------------
 
 - Almost complete rewrite, everything should almost be the same (frontend)
