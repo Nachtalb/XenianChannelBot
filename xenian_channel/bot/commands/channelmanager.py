@@ -646,6 +646,7 @@ class ChannelManager(BaseCommand):
         filtered_messages = [msg for msg in self.tg_current_channel.added_messages if not isinstance(msg, DBRef)]
 
         if not preview:
+            filtered_messages.extend(self.tg_current_channel.queued_messages)
             self.tg_current_channel.queued_messages = filtered_messages
             self.tg_current_channel.added_messages = []
         else:

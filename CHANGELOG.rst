@@ -4,6 +4,7 @@ Changelog
 0.1.1 (unreleased)
 ------------------
 
+- Fix queued messages lost when at least one fails
 - Fix typo
 
 
