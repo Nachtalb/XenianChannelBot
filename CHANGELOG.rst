@@ -7,6 +7,8 @@ Changelog
 - Almost complete rewrite, everything should almost be the same (frontend)
 - Use MongoEngine instead of pymongo
 - Add DEBUG setting to enable more functionality during development
+- Send messages in background so user doesn't need to wait for the bot
+- Read commit messages for full changelog
 
 
 0.0.3 (2019-01-15)
