@@ -1,3 +1,4 @@
+from threading import Lock
 from typing import Iterable
 
 from mongoengine import DictField, Document, ListField, ReferenceField
@@ -11,6 +12,8 @@ class TelegramDocument(Document):
     _tg_object = None
     _bot = None
     meta = {'abstract': True}
+
+    save_lock = Lock()
 
     class Meta:
         original = NotImplemented
@@ -51,6 +54,13 @@ class TelegramDocument(Document):
     def __call__(self, bot: Bot):
         self._bot = bot
         return self
+
+    def save(self, *args, **kwargs):
+        try:
+            self.save_lock.acquire()
+            super().save(*args, **kwargs)
+        finally:
+            self.save_lock.release()
 
     @classmethod
     def fields(cls):

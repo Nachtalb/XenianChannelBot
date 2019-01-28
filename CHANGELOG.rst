@@ -4,7 +4,7 @@ Changelog
 0.1.2 (unreleased)
 ------------------
 
-- Nothing changed yet.
+- Prevent race condition
 
 
 0.1.1 (2019-01-28)

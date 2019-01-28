@@ -115,8 +115,6 @@ class ChannelManager(BaseCommand):
 
     def on_call(self, bot: Bot, update: Update):
         super(ChannelManager, self).on_call(bot, update)
-        self._tg_current_channel = None
-        self.tg_state = None
 
         if self.user:
             data = dict(user=self.tg_user)

@@ -103,10 +103,6 @@ class BaseCommand:
         self.message = update.effective_message
         self.chat = update.effective_chat
 
-        self.tg_user = None
-        self.tg_chat = None
-        self.tg_message = None
-
         if self.user:
             self.tg_user = TgUser(self.user)
             self.tg_user.save()
