@@ -144,9 +144,13 @@ class ChannelManager(BaseCommand):
                 except BadRequest:
                     pass
         else:
-            text = current_message.original_object['text']
             if 'text' in kwargs:
                 text = kwargs.pop('text')
+            elif args and isinstance(args[0], str):
+                text = args[0]
+            else:
+                text = current_message.original_object['text']
+
             new_message = self.bot.edit_message_text(text=text, chat_id=self.chat.id,
                                                      message_id=current_message.message_id, **kwargs)
 
