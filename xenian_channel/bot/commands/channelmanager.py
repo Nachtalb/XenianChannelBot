@@ -117,15 +117,11 @@ class ChannelManager(BaseCommand):
 
     @property
     def tg_current_channel(self):
-        if self._tg_current_channel is None:
-            self._tg_current_channel = self.tg_state.current_channel
-
-        return self._tg_current_channel
+        return self.tg_state.current_channel
 
     @tg_current_channel.setter
     def tg_current_channel(self, channel: ChannelSettings or None):
-        self._tg_current_channel = channel
-        self.tg_state.current_channel = self._tg_current_channel
+        self.tg_state.current_channel = channel
         self.tg_state.cascade_save()
         self.tg_state.save()
 
