@@ -4,7 +4,7 @@ Changelog
 0.1.4 (unreleased)
 ------------------
 
-- Nothing changed yet.
+- Call add channel from the channel list menu
 
 
 0.1.3 (2019-01-29)

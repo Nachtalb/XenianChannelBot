@@ -310,7 +310,7 @@ class ChannelManager(BaseCommand):
     # # # # # # # # # # # # # # # # # # #
 
     @run_async
-    def add_channel_command(self):
+    def add_channel_command(self, **kwargs):
         """Add a channel to your channels
         """
         add_to_channel_instruction = (
@@ -482,6 +482,8 @@ class ChannelManager(BaseCommand):
             ]
             for index in range(0, len(channels), 2)
         ]
+
+        buttons.append([self.create_button(text='Add new channel', callback=self.add_channel_command)])
 
         real_buttons = self.convert_buttons(buttons)
 
