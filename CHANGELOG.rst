@@ -7,6 +7,11 @@ Changelog
 - Call add channel from the channel list menu
 - Fix problem with channels having no username
 - Implement MessageQueue from telegram python bot to prevent hitting the flood limit
+- Support sending multiple queues in a one channel simultaneously
+- Fix channel overlapping with other users
+- Improve message texts
+- Send the user a message if a queue was fully sent successfully
+- Directly send preview of added message when adding messages
 
 
 0.1.3 (2019-01-29)

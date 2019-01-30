@@ -1,7 +1,8 @@
 import logging
+import re
 from collections import namedtuple
-from time import sleep
 from typing import Callable, Dict, Tuple
+from uuid import uuid4
 from warnings import warn
 
 import emoji
@@ -117,15 +118,11 @@ class ChannelManager(BaseCommand):
 
     @property
     def tg_current_channel(self):
-        if self._tg_current_channel is None:
-            self._tg_current_channel = self.tg_state.current_channel
-
-        return self._tg_current_channel
+        return self.tg_state.current_channel
 
     @tg_current_channel.setter
     def tg_current_channel(self, channel: ChannelSettings or None):
-        self._tg_current_channel = channel
-        self.tg_state.current_channel = self._tg_current_channel
+        self.tg_state.current_channel = channel
         self.tg_state.cascade_save()
         self.tg_state.save()
 
@@ -144,9 +141,13 @@ class ChannelManager(BaseCommand):
                 except BadRequest:
                     pass
         else:
-            text = current_message.original_object['text']
             if 'text' in kwargs:
                 text = kwargs.pop('text')
+            elif args and isinstance(args[0], str):
+                text = args[0]
+            else:
+                text = current_message.original_object['text']
+
             new_message = self.bot.edit_message_text(text=text, chat_id=self.chat.id,
                                                      message_id=current_message.message_id, **kwargs)
 
@@ -159,7 +160,8 @@ class ChannelManager(BaseCommand):
         new_tg_message.save()
         return new_tg_message
 
-    def get_username_or_link(self, chat: User or Chat or TgChat or TgUser or ChannelSettings):
+    def get_username_or_link(self, chat: User or Chat or TgChat or TgUser or ChannelSettings,
+                             is_markdown: bool = False):
         real_chat = chat
         if isinstance(chat, ChannelSettings):
             real_chat = chat.chat.to_object(self.bot)
@@ -167,13 +169,21 @@ class ChannelManager(BaseCommand):
             real_chat = chat.to_object(self.bot)
 
         if hasattr(real_chat, 'name'):
-            return real_chat.name
+            chat_title = real_chat.name
         elif real_chat.username:
-            return f'@{real_chat.username}'
+            chat_title = f'@{real_chat.username}'
         elif real_chat.title:
-            return real_chat.title
+            chat_title = real_chat.title
         else:
-            return real_chat.link
+            chat_title = real_chat.link
+
+        if is_markdown:
+            chat_title = re.sub(r'([\\`*_{}\[\]()#+-.!"\'])', r'\\\1', chat_title)
+            chat_title = chat_title.replace('<', '&lt;').replace('>', '&gt;').replace('$', '&amp;')
+            return chat_title
+        else:
+            return chat_title
+
 
     def get_channel_permissions_for_bot(self, chat: Chat):
         """Get usual permissions of bot from chat
@@ -425,7 +435,8 @@ class ChannelManager(BaseCommand):
         self.tg_current_channel.added_messages.append(self.tg_message)
         self.tg_current_channel.save()
 
-        self.message.reply_text('Message was added sent the next one.', disable_notification=True)
+        method, include_kwargs, reaction_dict = self.prepare_send_message(self.tg_message, is_preview=True)
+        method(chat_id=self.chat.id, disable_notification=True, **include_kwargs)
 
         job = job_queue.run_once(
             lambda bot_, _job, **__: self.create_post_menu(recreate_message=True, *args, **kwargs),
@@ -537,11 +548,12 @@ class ChannelManager(BaseCommand):
             ]
         ]
 
-        chat_name = self.get_username_or_link(self.tg_current_channel)
+        chat_name = self.get_username_or_link(self.tg_current_channel, is_markdown=True)
         added_amount = len(self.tg_current_channel.added_messages)
         self.create_or_update_button_message(
-            text=f'Channel: {chat_name}\nSend me what should be sent to the channel: {added_amount} in queue',
-            reply_markup=self.convert_buttons(buttons), create=recreate_message)
+            text=f'Channel: {chat_name}\nSend me messages to be sent to the channel\n'
+            f'Currently `{added_amount}` are added.',
+            reply_markup=self.convert_buttons(buttons), create=recreate_message, parse_mode=ParseMode.MARKDOWN)
 
     @run_async
     def settings_menu(self, **kwargs):
@@ -619,14 +631,16 @@ class ChannelManager(BaseCommand):
 
         # Move items to queue
         self.tg_state.state = self.tg_state.SEND_LOCKED
-        filtered_messages = [msg for msg in self.tg_current_channel.added_messages if not isinstance(msg, DBRef)]
+        messages = [msg for msg in self.tg_current_channel.added_messages if not isinstance(msg, DBRef)]
 
+        uuid = None
+        self.tg_current_channel.queued_messages = self.tg_current_channel.queued_messages or {}
         if not preview:
-            filtered_messages.extend(self.tg_current_channel.queued_messages)
-            self.tg_current_channel.queued_messages = filtered_messages
-            self.tg_current_channel.added_messages = []
+            uuid = str(uuid4())
+            self.tg_current_channel.queued_messages[uuid] = messages
+            self.tg_current_channel.added_messages.clear()
         else:
-            self.tg_current_channel.added_messages = filtered_messages
+            self.tg_current_channel.added_messages = messages
         self.tg_current_channel.save()
         self.tg_state.state = self.tg_state.CREATE_SINGLE_POST
 
@@ -643,7 +657,7 @@ class ChannelManager(BaseCommand):
         if not preview:
             self.create_post_menu(recreate_message=True)
 
-        for index, stored_message in progress_bar.enumerate(filtered_messages):
+        for index, stored_message in progress_bar.enumerate(messages):
             try:
                 method, include_kwargs, reaction_dict = self.prepare_send_message(stored_message, is_preview=preview)
 
@@ -652,12 +666,16 @@ class ChannelManager(BaseCommand):
                     new_tg_message = TgMessage(new_message, reactions=reaction_dict)
                     new_tg_message.save()
 
-                    self.tg_current_channel.queued_messages.remove(stored_message)
+                    self.tg_current_channel.queued_messages[uuid].remove(stored_message)
                     self.tg_current_channel.sent_messages.append(new_tg_message)
             except TimedOut as e:
                 warn(e)
             except (BaseException, Exception) as e:
-                self.tg_current_channel.save()
+                if not preview:
+                    # Move queued messages back to added messages if an error occurs
+                    self.tg_current_channel.added_messages.extend(self.tg_current_channel.queued_messages[uuid])
+                    del self.tg_current_channel.queued_messages[uuid]
+                    self.tg_current_channel.save()
 
                 self.message.reply_text('An error occurred please contact an admin with /error')
                 self.tg_state.state = self.tg_state.CREATE_SINGLE_POST
@@ -667,6 +685,9 @@ class ChannelManager(BaseCommand):
         self.tg_current_channel.save()
         if preview:
             self.create_post_menu(recreate_message=True)
+        else:
+            del self.tg_current_channel.queued_messages[uuid]
+            self.message.reply_text('All queued messages sent')
 
     @run_async
     def clear_queue_callback_query(self, **kwargs):
@@ -680,12 +701,14 @@ class ChannelManager(BaseCommand):
     def remove_from_queue_callback_query(self, button: Button):
         message = TgMessage.objects(message_id=button.data['message_id']).first()
         if message:
-            self.tg_current_channel.added_messages.remove(message)
-            self.tg_current_channel.save()
+            reply = ''
+            if message in self.tg_current_channel.added_messages:
+                self.tg_current_channel.added_messages.remove(message)
+                self.tg_current_channel.save()
+                reply = 'Message was removed'
 
-            message.delete()
             self.message.delete()
-            self.update.callback_query.answer('Message was removed')
+            self.update.callback_query.answer(reply)
         else:
             self.update.callback_query.answer('Could not remove message, contact /support')
         self.create_post_menu(recreate_message=True)
