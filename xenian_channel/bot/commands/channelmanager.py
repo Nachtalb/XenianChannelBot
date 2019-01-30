@@ -1,8 +1,8 @@
 import logging
 import re
 from collections import namedtuple
-from time import sleep
 from typing import Callable, Dict, Tuple
+from uuid import uuid4
 from warnings import warn
 
 import emoji
@@ -548,11 +548,10 @@ class ChannelManager(BaseCommand):
         ]
 
         chat_name = self.get_username_or_link(self.tg_current_channel, is_markdown=True)
-        queued_amount = len(self.tg_current_channel.queued_messages)
         added_amount = len(self.tg_current_channel.added_messages)
         self.create_or_update_button_message(
             text=f'Channel: {chat_name}\nSend me messages to be sent to the channel\n'
-            f'Currently `{added_amount}` are added and `{queued_amount}` are queued to be sent.',
+            f'Currently `{added_amount}` are added.',
             reply_markup=self.convert_buttons(buttons), create=recreate_message, parse_mode=ParseMode.MARKDOWN)
 
     @run_async
@@ -631,14 +630,16 @@ class ChannelManager(BaseCommand):
 
         # Move items to queue
         self.tg_state.state = self.tg_state.SEND_LOCKED
-        filtered_messages = [msg for msg in self.tg_current_channel.added_messages if not isinstance(msg, DBRef)]
+        messages = [msg for msg in self.tg_current_channel.added_messages if not isinstance(msg, DBRef)]
 
+        uuid = None
+        self.tg_current_channel.queued_messages = self.tg_current_channel.queued_messages or {}
         if not preview:
-            filtered_messages.extend(self.tg_current_channel.queued_messages)
-            self.tg_current_channel.queued_messages = filtered_messages
-            self.tg_current_channel.added_messages = []
+            uuid = str(uuid4())
+            self.tg_current_channel.queued_messages[uuid] = messages
+            self.tg_current_channel.added_messages.clear()
         else:
-            self.tg_current_channel.added_messages = filtered_messages
+            self.tg_current_channel.added_messages = messages
         self.tg_current_channel.save()
         self.tg_state.state = self.tg_state.CREATE_SINGLE_POST
 
@@ -655,7 +656,7 @@ class ChannelManager(BaseCommand):
         if not preview:
             self.create_post_menu(recreate_message=True)
 
-        for index, stored_message in progress_bar.enumerate(filtered_messages):
+        for index, stored_message in progress_bar.enumerate(messages):
             try:
                 method, include_kwargs, reaction_dict = self.prepare_send_message(stored_message, is_preview=preview)
 
@@ -664,12 +665,16 @@ class ChannelManager(BaseCommand):
                     new_tg_message = TgMessage(new_message, reactions=reaction_dict)
                     new_tg_message.save()
 
-                    self.tg_current_channel.queued_messages.remove(stored_message)
+                    self.tg_current_channel.queued_messages[uuid].remove(stored_message)
                     self.tg_current_channel.sent_messages.append(new_tg_message)
             except TimedOut as e:
                 warn(e)
             except (BaseException, Exception) as e:
-                self.tg_current_channel.save()
+                if not preview:
+                    # Move queued messages back to added messages if an error occurs
+                    self.tg_current_channel.added_messages.extend(self.tg_current_channel.queued_messages[uuid])
+                    del self.tg_current_channel.queued_messages[uuid]
+                    self.tg_current_channel.save()
 
                 self.message.reply_text('An error occurred please contact an admin with /error')
                 self.tg_state.state = self.tg_state.CREATE_SINGLE_POST
@@ -680,6 +685,7 @@ class ChannelManager(BaseCommand):
         if preview:
             self.create_post_menu(recreate_message=True)
         else:
+            del self.tg_current_channel.queued_messages[uuid]
             self.message.reply_text('All queued messages sent')
 
     @run_async

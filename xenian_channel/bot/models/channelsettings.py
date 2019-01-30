@@ -1,4 +1,4 @@
-from mongoengine import Document, ListField, ReferenceField, StringField
+from mongoengine import Document, ListField, ReferenceField, StringField, DictField, DynamicField
 from threading import Lock
 
 from xenian_channel.bot.models.tg_chat import TgChat
@@ -16,8 +16,10 @@ class ChannelSettings(Document):
     reactions = ListField(StringField())
 
     sent_messages = ListField(ReferenceField(TgMessage))
-    queued_messages = ListField(ReferenceField(TgMessage))
     added_messages = ListField(ReferenceField(TgMessage))
+
+    # should actually be DictField(ListField(ReferenceField(TgMessage))) but it has errors if used like so
+    queued_messages = DynamicField()
 
     save_lock = Lock()
 
