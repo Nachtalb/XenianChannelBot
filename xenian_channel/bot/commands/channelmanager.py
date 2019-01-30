@@ -701,12 +701,14 @@ class ChannelManager(BaseCommand):
     def remove_from_queue_callback_query(self, button: Button):
         message = TgMessage.objects(message_id=button.data['message_id']).first()
         if message:
-            self.tg_current_channel.added_messages.remove(message)
-            self.tg_current_channel.save()
+            reply = ''
+            if message in self.tg_current_channel.added_messages:
+                self.tg_current_channel.added_messages.remove(message)
+                self.tg_current_channel.save()
+                reply = 'Message was removed'
 
-            message.delete()
             self.message.delete()
-            self.update.callback_query.answer('Message was removed')
+            self.update.callback_query.answer(reply)
         else:
             self.update.callback_query.answer('Could not remove message, contact /support')
         self.create_post_menu(recreate_message=True)
