@@ -1,4 +1,5 @@
 import logging
+import re
 from collections import namedtuple
 from time import sleep
 from typing import Callable, Dict, Tuple
@@ -159,7 +160,8 @@ class ChannelManager(BaseCommand):
         new_tg_message.save()
         return new_tg_message
 
-    def get_username_or_link(self, chat: User or Chat or TgChat or TgUser or ChannelSettings):
+    def get_username_or_link(self, chat: User or Chat or TgChat or TgUser or ChannelSettings,
+                             is_markdown: bool = False):
         real_chat = chat
         if isinstance(chat, ChannelSettings):
             real_chat = chat.chat.to_object(self.bot)
@@ -167,13 +169,21 @@ class ChannelManager(BaseCommand):
             real_chat = chat.to_object(self.bot)
 
         if hasattr(real_chat, 'name'):
-            return real_chat.name
+            chat_title = real_chat.name
         elif real_chat.username:
-            return f'@{real_chat.username}'
+            chat_title = f'@{real_chat.username}'
         elif real_chat.title:
-            return real_chat.title
+            chat_title = real_chat.title
         else:
-            return real_chat.link
+            chat_title = real_chat.link
+
+        if is_markdown:
+            chat_title = re.sub(r'([\\`*_{}\[\]()#+-.!"\'])', r'\\\1', chat_title)
+            chat_title = chat_title.replace('<', '&lt;').replace('>', '&gt;').replace('$', '&amp;')
+            return chat_title
+        else:
+            return chat_title
+
 
     def get_channel_permissions_for_bot(self, chat: Chat):
         """Get usual permissions of bot from chat
@@ -537,11 +547,13 @@ class ChannelManager(BaseCommand):
             ]
         ]
 
-        chat_name = self.get_username_or_link(self.tg_current_channel)
+        chat_name = self.get_username_or_link(self.tg_current_channel, is_markdown=True)
+        queued_amount = len(self.tg_current_channel.queued_messages)
         added_amount = len(self.tg_current_channel.added_messages)
         self.create_or_update_button_message(
-            text=f'Channel: {chat_name}\nSend me what should be sent to the channel: {added_amount} in queue',
-            reply_markup=self.convert_buttons(buttons), create=recreate_message)
+            text=f'Channel: {chat_name}\nSend me messages to be sent to the channel\n'
+            f'Currently `{added_amount}` are added and `{queued_amount}` are queued to be sent.',
+            reply_markup=self.convert_buttons(buttons), create=recreate_message, parse_mode=ParseMode.MARKDOWN)
 
     @run_async
     def settings_menu(self, **kwargs):
