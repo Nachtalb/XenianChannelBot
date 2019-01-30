@@ -667,6 +667,8 @@ class ChannelManager(BaseCommand):
         self.tg_current_channel.save()
         if preview:
             self.create_post_menu(recreate_message=True)
+        else:
+            self.message.reply_text('All queued messages sent')
 
     @run_async
     def clear_queue_callback_query(self, **kwargs):
