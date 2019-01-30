@@ -137,7 +137,7 @@ class ChannelManager(BaseCommand):
         current_message = TgMessage.objects(chat=self.tg_chat, is_current_message=True).first()
 
         if not current_message or kwargs.get('create', False):
-            new_message = self.message.reply_text(*args, **kwargs)
+            new_message = self.message.reply_text(*args, **kwargs).result()
             if current_message:
                 try:
                     self.bot.delete_message(chat_id=self.chat.id, message_id=current_message.message_id)
@@ -647,13 +647,7 @@ class ChannelManager(BaseCommand):
             try:
                 method, include_kwargs, reaction_dict = self.prepare_send_message(stored_message, is_preview=preview)
 
-                # Prevent hitting flood limit
-                if preview:
-                    sleep(1 / 29)  # In private chat the flood limit is at 30 messages / second
-                else:
-                    sleep(60 / 19)  # In groups and channels the limit is at 20 messages / minute
-
-                new_message = method(chat_id=send_to.id, **include_kwargs)
+                new_message = method(chat_id=send_to.id, **include_kwargs, isgroup=not preview)
                 if not preview:
                     new_tg_message = TgMessage(new_message, reactions=reaction_dict)
                     new_tg_message.save()

@@ -138,7 +138,7 @@ class TelegramProgressBar:
                                           bar=self.unloaded_char * self.line_width,
                                           se='\n' + self.se_message if self.se_message else '')
         message = message.format(current=self.current_step, total=self.full_amount, step_size=self.step_size)
-        self.last_message = self.bot.send_message(self.chat_id, message, parse_mode=ParseMode.MARKDOWN)
+        self.last_message = self.bot.send_message(self.chat_id, message, parse_mode=ParseMode.MARKDOWN).result()
         self.started = True
 
     def update(self,
@@ -197,7 +197,7 @@ class TelegramProgressBar:
             except TimedOut:
                 pass
             return
-        self.last_message = self.bot.send_message(self.chat_id, message, parse_mode=ParseMode.MARKDOWN)
+        self.last_message = self.bot.send_message(self.chat_id, message, parse_mode=ParseMode.MARKDOWN).result()
 
     def remove(self):
         """Remove your progressbar from Telegram.

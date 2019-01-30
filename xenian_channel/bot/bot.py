@@ -4,13 +4,37 @@ import sys
 from threading import Thread
 
 from telegram import Bot, TelegramError, Update
-from telegram.ext import CommandHandler, Filters, Updater
+from telegram.ext import CommandHandler, Filters, Updater, messagequeue
+from telegram.utils.request import Request
 
 import xenian_channel.bot
 from .settings import ADMINS, LOG_LEVEL, MODE, TELEGRAM_API_TOKEN
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=LOG_LEVEL)
 logger = logging.getLogger(__name__)
+
+
+class MQBot(Bot):
+    """subclass of Bot which delegates send method handling to MQ"""
+
+    def __init__(self, *args, is_queued_def=True, mqueue=None, **kwargs):
+        super(MQBot, self).__init__(*args, **kwargs)
+        # below 2 attributes should be provided for decorator usage
+        self._is_messages_queued_default = is_queued_def
+        self._msg_queue = mqueue or messagequeue.MessageQueue()
+
+    def __del__(self):
+        try:
+            self._msg_queue.stop()
+        except:
+            pass
+        super(MQBot, self).__del__()
+
+    @messagequeue.queuedmessage
+    def send_message(self, *args, **kwargs):
+        """Wrapped method would accept new `queued` and `isgroup`
+        OPTIONAL arguments"""
+        return super(MQBot, self).send_message(*args, **kwargs)
 
 
 def error(bot: Bot, update: Update, error: TelegramError):
@@ -31,7 +55,11 @@ def error(bot: Bot, update: Update, error: TelegramError):
 
 def main():
     global job_queue
-    updater = Updater(TELEGRAM_API_TOKEN)
+    queue = messagequeue.MessageQueue(all_burst_limit=29, all_time_limit_ms=1017)
+    request = Request(con_pool_size=8)
+    bot = MQBot(TELEGRAM_API_TOKEN, request=request, mqueue=queue)
+
+    updater = Updater(bot=bot)
     dispatcher = updater.dispatcher
 
     xenian_channel.bot.job_queue = updater.job_queue

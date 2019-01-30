@@ -6,6 +6,7 @@ Changelog
 
 - Call add channel from the channel list menu
 - Fix problem with channels having no username
+- Implement MessageQueue from telegram python bot to prevent hitting the flood limit
 
 
 0.1.3 (2019-01-29)
