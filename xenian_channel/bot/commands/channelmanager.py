@@ -435,7 +435,8 @@ class ChannelManager(BaseCommand):
         self.tg_current_channel.added_messages.append(self.tg_message)
         self.tg_current_channel.save()
 
-        self.message.reply_text('Message was added sent the next one.', disable_notification=True)
+        method, include_kwargs, reaction_dict = self.prepare_send_message(self.tg_message, is_preview=True)
+        method(chat_id=self.chat.id, disable_notification=True, **include_kwargs)
 
         job = job_queue.run_once(
             lambda bot_, _job, **__: self.create_post_menu(recreate_message=True, *args, **kwargs),
