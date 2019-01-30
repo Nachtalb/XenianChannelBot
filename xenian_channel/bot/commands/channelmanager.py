@@ -162,7 +162,7 @@ class ChannelManager(BaseCommand):
     def get_username_or_link(self, chat: User or Chat or TgChat or TgUser or ChannelSettings):
         real_chat = chat
         if isinstance(chat, ChannelSettings):
-            real_chat = chat.chat
+            real_chat = chat.chat.to_object(self.bot)
         elif isinstance(chat, TgChat) or isinstance(chat, TgUser):
             real_chat = chat.to_object(self.bot)
 
@@ -170,6 +170,8 @@ class ChannelManager(BaseCommand):
             return real_chat.name
         elif real_chat.username:
             return f'@{real_chat.username}'
+        elif real_chat.title:
+            return real_chat.title
         else:
             return real_chat.link
 
@@ -308,7 +310,7 @@ class ChannelManager(BaseCommand):
     # # # # # # # # # # # # # # # # # # #
 
     @run_async
-    def add_channel_command(self):
+    def add_channel_command(self, **kwargs):
         """Add a channel to your channels
         """
         add_to_channel_instruction = (
@@ -474,12 +476,14 @@ class ChannelManager(BaseCommand):
 
         buttons = [
             [
-                self.create_button(text=f'@{channel.chat.username}' if channel.chat.username else channel.chat.titel,
+                self.create_button(text=f'@{channel.chat.username}' if channel.chat.username else channel.chat.title,
                                    data={'channel_settings_id': channel.id}, callback=self.channel_actions_menu)
                 for channel in channels[index:index + 2]
             ]
             for index in range(0, len(channels), 2)
         ]
+
+        buttons.append([self.create_button(text='Add new channel', callback=self.add_channel_command)])
 
         real_buttons = self.convert_buttons(buttons)
 
