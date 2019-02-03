@@ -638,7 +638,7 @@ class ChannelManager(BaseCommand):
         if not preview:
             uuid = str(uuid4())
             self.tg_current_channel.queued_messages[uuid] = messages
-            self.tg_current_channel.added_messages.clear()
+            self.tg_current_channel.added_messages = []
         else:
             self.tg_current_channel.added_messages = messages
         self.tg_current_channel.save()
@@ -673,7 +673,10 @@ class ChannelManager(BaseCommand):
             except (BaseException, Exception) as e:
                 if not preview:
                     # Move queued messages back to added messages if an error occurs
-                    self.tg_current_channel.added_messages.extend(self.tg_current_channel.queued_messages[uuid])
+                    if self.tg_current_channel.added_messages is None:
+                        self.tg_current_channel.added_messages = []
+
+                    self.tg_current_channel.added_messages += self.tg_current_channel.queued_messages[uuid]
                     del self.tg_current_channel.queued_messages[uuid]
                     self.tg_current_channel.save()
 
