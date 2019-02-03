@@ -372,7 +372,6 @@ class ChannelManager(BaseCommand):
     # START Message Handlers            #
     # # # # # # # # # # # # # # # # # # #
 
-    @run_async
     def message_handler_dispatcher(self):
         """Dispatch messages to correct function, defied by the users state
         """
@@ -423,7 +422,6 @@ class ChannelManager(BaseCommand):
         self.tg_state.state = self.tg_state.IDLE
         self.list_channels_menu()
 
-    @run_async
     def queue_message_message_handler(self, *args, **kwargs):
         if not (self.message.text or self.message.photo or self.message.video or self.message.audio or
                 self.message.voice or self.message.document or self.message.animation or self.message.sticker or
