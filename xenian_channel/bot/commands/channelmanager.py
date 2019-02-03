@@ -655,7 +655,7 @@ class ChannelManager(BaseCommand):
         if not preview:
             self.create_post_menu(recreate_message=True)
 
-        for index, stored_message in progress_bar.enumerate(messages):
+        for index, stored_message in progress_bar.enumerate(messages[:]):
             try:
                 method, include_kwargs, reaction_dict = self.prepare_send_message(stored_message, is_preview=preview)
 
