@@ -10,6 +10,17 @@ __all__ = ['TgMessage']
 
 class TgMessage(TelegramDocument):
     meta = {'collection': 'telegram_message'}
+    file_types = [
+        'audio',
+        'sticker',
+        'video',
+        'animation',
+        'photo',
+        'document',
+        'voice',
+        'video_note',
+    ]
+    _file_id = None
 
     class Meta:
         original = Message
@@ -27,3 +38,19 @@ class TgMessage(TelegramDocument):
 
     def __repr__(self):
         return f'{super().__repr__()} - {self.message_id}'
+
+    @property
+    def file_id(self) -> int or None:
+        if self._file_id:
+            return self._file_id
+
+        message = self.original_object
+
+        if not message:
+            return None
+
+        for file_type in self.file_types:
+            file = message.get(file_type, {})
+            if file and 'file_id' in file:
+                self._file_id = file['file_id']
+                return self._file_id
