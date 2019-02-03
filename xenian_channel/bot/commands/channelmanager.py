@@ -1,7 +1,7 @@
 import logging
 import re
 from collections import namedtuple
-from typing import Callable, Dict, Tuple
+from typing import Callable, Dict, Tuple, Iterable
 from uuid import uuid4
 from warnings import warn
 
@@ -59,7 +59,7 @@ class ChannelManager(BaseCommand):
     name = 'Channel Manager'
     group = 'Channel Manager'
 
-    ram_db_button_message_id = {}  # {user_id: Telegram Message Obj}
+    sent_file_id_cache = {}  # {ChannelSettings obj: [file_id, ...]]}}
 
     def __init__(self):
         self.commands = [
@@ -183,7 +183,6 @@ class ChannelManager(BaseCommand):
             return chat_title
         else:
             return chat_title
-
 
     def get_channel_permissions_for_bot(self, chat: Chat):
         """Get usual permissions of bot from chat
@@ -311,6 +310,36 @@ class ChannelManager(BaseCommand):
             for index in range(0, len(reactions), 4)
         ]
 
+    def get_all_file_ids_of_channel(self, channel_settings: ChannelSettings, force_reload: bool = False) -> Iterable[int]:
+        yield from self.get_sent_file_id_of_channel(channel_settings, force_reload)
+        yield from self.get_queued_file_ids_of_channel(channel_settings)
+        yield from self.get_added_file_ids_of_channel(channel_settings)
+
+    def get_sent_file_id_of_channel(self, channel_settings: ChannelSettings, force_reload: bool = False) -> Iterable[int]:
+        if channel_settings in self.sent_file_id_cache and not force_reload:
+            return self.sent_file_id_cache[channel_settings]
+
+        for message in channel_settings.sent_messages:
+            file_id = message.file_id
+            if not file_id:
+                continue
+            yield file_id
+
+    def get_queued_file_ids_of_channel(self, channel_settings: ChannelSettings) -> Iterable[int]:
+        for queue in channel_settings.queued_messages.values():
+            for message in queue:
+                file_id = message.file_id
+                if not file_id:
+                    continue
+                yield file_id
+
+    def get_added_file_ids_of_channel(self, channel_settings: ChannelSettings) -> Iterable[int]:
+        for message in channel_settings.added_messages:
+            file_id = message.file_id
+            if not file_id:
+                continue
+            yield file_id
+
     # # # # # # # # # # # # # # # # # # #
     # END Helper                        #
     # # # # # # # # # # # # # # # # # # #
@@ -372,7 +401,6 @@ class ChannelManager(BaseCommand):
     # START Message Handlers            #
     # # # # # # # # # # # # # # # # # # #
 
-    @run_async
     def message_handler_dispatcher(self):
         """Dispatch messages to correct function, defied by the users state
         """
@@ -423,7 +451,6 @@ class ChannelManager(BaseCommand):
         self.tg_state.state = self.tg_state.IDLE
         self.list_channels_menu()
 
-    @run_async
     def queue_message_message_handler(self, *args, **kwargs):
         if not (self.message.text or self.message.photo or self.message.video or self.message.audio or
                 self.message.voice or self.message.document or self.message.animation or self.message.sticker or
@@ -431,12 +458,21 @@ class ChannelManager(BaseCommand):
             self.message.reply_text('This type of message is not supported.', reply_message_id=self.message.message_id)
             return
 
-        self.tg_message.save()
-        self.tg_current_channel.added_messages.append(self.tg_message)
-        self.tg_current_channel.save()
+        file_ids = self.get_all_file_ids_of_channel(self.tg_current_channel)
+        if self.tg_message.file_id in file_ids:
+            self.message.reply_text('Message was already sent once or is queued.',
+                                    reply_message_id=self.message.message_id)
+        else:
+            self.tg_message.save()
+            self.tg_current_channel.added_messages.append(self.tg_message)
+            self.tg_current_channel.save()
 
-        method, include_kwargs, reaction_dict = self.prepare_send_message(self.tg_message, is_preview=True)
-        method(chat_id=self.chat.id, disable_notification=True, **include_kwargs)
+            if self.tg_message.file_id and self.tg_current_channel in self.sent_file_id_cache:
+                self.sent_file_id_cache[self.tg_current_channel].append(self.tg_message.file_id)
+
+            method, include_kwargs, reaction_dict = self.prepare_send_message(self.tg_message, is_preview=True)
+            method(chat_id=self.chat.id, disable_notification=True, reply_message_id=self.message.message_id,
+                   **include_kwargs)
 
         job = job_queue.run_once(
             lambda bot_, _job, **__: self.create_post_menu(recreate_message=True, *args, **kwargs),
@@ -638,7 +674,7 @@ class ChannelManager(BaseCommand):
         if not preview:
             uuid = str(uuid4())
             self.tg_current_channel.queued_messages[uuid] = messages
-            self.tg_current_channel.added_messages.clear()
+            self.tg_current_channel.added_messages = []
         else:
             self.tg_current_channel.added_messages = messages
         self.tg_current_channel.save()
@@ -657,7 +693,7 @@ class ChannelManager(BaseCommand):
         if not preview:
             self.create_post_menu(recreate_message=True)
 
-        for index, stored_message in progress_bar.enumerate(messages):
+        for index, stored_message in progress_bar.enumerate(messages[:]):
             try:
                 method, include_kwargs, reaction_dict = self.prepare_send_message(stored_message, is_preview=preview)
 
@@ -673,7 +709,10 @@ class ChannelManager(BaseCommand):
             except (BaseException, Exception) as e:
                 if not preview:
                     # Move queued messages back to added messages if an error occurs
-                    self.tg_current_channel.added_messages.extend(self.tg_current_channel.queued_messages[uuid])
+                    if self.tg_current_channel.added_messages is None:
+                        self.tg_current_channel.added_messages = []
+
+                    self.tg_current_channel.added_messages += self.tg_current_channel.queued_messages[uuid]
                     del self.tg_current_channel.queued_messages[uuid]
                     self.tg_current_channel.save()
 
