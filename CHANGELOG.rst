@@ -12,7 +12,9 @@ Changelog
 - Improve message texts
 - Send the user a message if a queue was fully sent successfully
 - Directly send preview of added message when adding messages
-
+- Attempt to fix issue with duplicate posts
+- Attempt to fix issue with sending posts
+- Prevent user from uploading the same file twice
 
 0.1.3 (2019-01-29)
 ------------------
