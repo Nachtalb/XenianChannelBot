@@ -1,7 +1,7 @@
 Changelog
 =========
 
-0.2.1 (unreleased)
+0.2.1 (2019-02-07)
 ------------------
 
 - Compare sent files across users
