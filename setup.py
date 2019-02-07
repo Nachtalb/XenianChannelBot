@@ -1,8 +1,6 @@
-from setuptools import find_packages
-from setuptools import setup
+from setuptools import find_packages, setup
 
 version = '0.2.2.dev0'
-
 
 setup(name='XenianChannelBot',
       version=version,
@@ -25,6 +23,7 @@ setup(name='XenianChannelBot',
           'mr.developer',
           'mongoengine',
           'python-telegram-bot',
+          'image_match',
       ],
 
       entry_points={
