@@ -1,3 +1,5 @@
+from typing import Generator
+
 from mongoengine import DictField, LongField, ReferenceField, BooleanField
 from telegram import Message
 
@@ -40,17 +42,23 @@ class TgMessage(TelegramDocument):
         return f'{super().__repr__()} - {self.message_id}'
 
     @property
-    def file_id(self) -> int or None:
-        if self._file_id:
-            return self._file_id
+    def file_ids(self) -> Generator[int, None, None]:
+        if self._file_id is not None:
+            yield from self._file_id
+            return
 
+        self._file_id = []
         message = self.original_object
 
         if not message:
-            return None
+            return
 
         for file_type in self.file_types:
-            file = message.get(file_type, {})
-            if file and 'file_id' in file:
-                self._file_id = file['file_id']
-                return self._file_id
+            file = message.get(file_type, None)
+            if isinstance(file, list):
+                for file_dict in file:
+                    self._file_id.append(file_dict['file_id'])
+            elif isinstance(file, dict) and 'file_id' in file:
+                self._file_id.append(file['file_id'])
+
+        yield from self._file_id
