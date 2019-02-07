@@ -311,34 +311,27 @@ class ChannelManager(BaseCommand):
         ]
 
     def get_all_file_ids_of_channel(self, channel_settings: ChannelSettings, force_reload: bool = False) -> Iterable[int]:
-        yield from self.get_sent_file_id_of_channel(channel_settings, force_reload)
+        yield from self.get_sent_file_id_of_chat(channel_settings.chat, force_reload)
         yield from self.get_queued_file_ids_of_channel(channel_settings)
         yield from self.get_added_file_ids_of_channel(channel_settings)
 
-    def get_sent_file_id_of_channel(self, channel_settings: ChannelSettings, force_reload: bool = False) -> Iterable[int]:
-        if channel_settings in self.sent_file_id_cache and not force_reload:
-            return self.sent_file_id_cache[channel_settings]
-
-        for message in channel_settings.sent_messages:
-            file_id = message.file_id
-            if not file_id:
+    def get_sent_file_id_of_chat(self, chat: TgChat, force_reload: bool = False) -> Iterable[int]:
+        for channel in ChannelSettings.objects(chat=chat):
+            if channel in self.sent_file_id_cache and not force_reload:
+                yield from self.sent_file_id_cache[channel]
                 continue
-            yield file_id
+
+            for message in channel.sent_messages:
+                yield from message.file_ids
 
     def get_queued_file_ids_of_channel(self, channel_settings: ChannelSettings) -> Iterable[int]:
         for queue in channel_settings.queued_messages.values():
             for message in queue:
-                file_id = message.file_id
-                if not file_id:
-                    continue
-                yield file_id
+                yield from message.file_ids
 
     def get_added_file_ids_of_channel(self, channel_settings: ChannelSettings) -> Iterable[int]:
         for message in channel_settings.added_messages:
-            file_id = message.file_id
-            if not file_id:
-                continue
-            yield file_id
+            yield from message.file_ids
 
     # # # # # # # # # # # # # # # # # # #
     # END Helper                        #
@@ -459,16 +452,13 @@ class ChannelManager(BaseCommand):
             return
 
         file_ids = self.get_all_file_ids_of_channel(self.tg_current_channel)
-        if self.tg_message.file_id in file_ids:
+        if [id for id in self.tg_message.file_ids if id in file_ids]:
             self.message.reply_text('Message was already sent once or is queued.',
                                     reply_message_id=self.message.message_id)
         else:
             self.tg_message.save()
             self.tg_current_channel.added_messages.append(self.tg_message)
             self.tg_current_channel.save()
-
-            if self.tg_message.file_id and self.tg_current_channel in self.sent_file_id_cache:
-                self.sent_file_id_cache[self.tg_current_channel].append(self.tg_message.file_id)
 
             method, include_kwargs, reaction_dict = self.prepare_send_message(self.tg_message, is_preview=True)
             method(chat_id=self.chat.id, disable_notification=True, reply_message_id=self.message.message_id,
@@ -701,6 +691,11 @@ class ChannelManager(BaseCommand):
                 if not preview:
                     new_tg_message = TgMessage(new_message, reactions=reaction_dict)
                     new_tg_message.save()
+
+                    if self.tg_current_channel in self.sent_file_id_cache:
+                        self.sent_file_id_cache[self.tg_current_channel].extend(new_tg_message.file_ids)
+                    else:
+                        self.sent_file_id_cache[self.tg_current_channel] = list(new_tg_message.file_ids)
 
                     self.tg_current_channel.queued_messages[uuid].remove(stored_message)
                     self.tg_current_channel.sent_messages.append(new_tg_message)
