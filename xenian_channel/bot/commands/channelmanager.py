@@ -1,21 +1,23 @@
 import logging
 import re
 from collections import namedtuple
-from typing import Callable, Dict, Tuple, Iterable
+from typing import Callable, Dict, Iterable, Tuple, Type
 from uuid import uuid4
 from warnings import warn
 
 import emoji
 from bson import DBRef
+from mongoengine import Document
 from telegram import Bot, Chat, InlineKeyboardButton, InlineKeyboardMarkup, Message, Update, User
 from telegram.error import BadRequest, TimedOut
 from telegram.ext import CallbackQueryHandler, Job, MessageHandler, run_async
 from telegram.parsemode import ParseMode
 
 from xenian_channel.bot import job_queue
-from xenian_channel.bot.models import ChannelSettings, TgChat, TgMessage, TgUser, UserState, Button
+from xenian_channel.bot.models import Button, ChannelSettings, TgChat, TgMessage, TgUser, UserState
 from xenian_channel.bot.settings import ADMINS, LOG_LEVEL
 from xenian_channel.bot.utils import TelegramProgressBar, get_self
+from xenian_channel.bot.utils.models import resolve_dbref
 from .base import BaseCommand
 
 __all__ = ['channel']
@@ -322,15 +324,24 @@ class ChannelManager(BaseCommand):
                 continue
 
             for message in channel.sent_messages:
+                message = resolve_dbref(TgMessage, message)
+                if message is None:
+                    continue
                 yield from message.file_ids
 
     def get_queued_file_ids_of_channel(self, channel_settings: ChannelSettings) -> Iterable[int]:
         for queue in channel_settings.queued_messages.values():
             for message in queue:
+                message = resolve_dbref(TgMessage, message)
+                if message is None:
+                    continue
                 yield from message.file_ids
 
     def get_added_file_ids_of_channel(self, channel_settings: ChannelSettings) -> Iterable[int]:
         for message in channel_settings.added_messages:
+            message = resolve_dbref(TgMessage, message)
+            if message is None:
+                continue
             yield from message.file_ids
 
     # # # # # # # # # # # # # # # # # # #
@@ -657,7 +668,7 @@ class ChannelManager(BaseCommand):
 
         # Move items to queue
         self.tg_state.state = self.tg_state.SEND_LOCKED
-        messages = [msg for msg in self.tg_current_channel.added_messages if not isinstance(msg, DBRef)]
+        messages = filter(None, map(lambda msg: resolve_dbref(TgMessage, msg), self.tg_current_channel.added_messages))
 
         uuid = None
         self.tg_current_channel.queued_messages = self.tg_current_channel.queued_messages or {}

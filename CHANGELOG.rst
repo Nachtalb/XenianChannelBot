@@ -5,6 +5,7 @@ Changelog
 ------------------
 
 - Compare sent files across users
+- Try to resolve DBRefs
 
 
 0.2.0 (2019-02-03)
