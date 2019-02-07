@@ -1,4 +1,4 @@
-from mongoengine import Document, StringField, DictField, BooleanField
+from mongoengine import BooleanField, DictField, Document, StringField
 
 
 class Button(Document):

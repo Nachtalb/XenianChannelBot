@@ -1,10 +1,10 @@
 import logging
-from typing import Dict, Callable, List
+from typing import Callable, Dict, List
 
-from telegram import Bot, Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import CommandHandler, Filters, MessageHandler
 
-from xenian_channel.bot.models import TgUser, TgChat, TgMessage, Button
+from xenian_channel.bot.models import Button, TgChat, TgMessage, TgUser
 from xenian_channel.bot.settings import LOG_LEVEL
 from xenian_channel.bot.utils.telegram import wants_update_bot
 

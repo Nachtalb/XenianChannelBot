@@ -1,6 +1,6 @@
 from typing import Generator
 
-from mongoengine import DictField, LongField, ReferenceField, BooleanField
+from mongoengine import BooleanField, DictField, LongField, ReferenceField
 from telegram import Message
 
 from xenian_channel.bot.models.telegram import TelegramDocument

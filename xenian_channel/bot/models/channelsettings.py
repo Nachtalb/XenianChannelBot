@@ -1,5 +1,6 @@
-from mongoengine import Document, ListField, ReferenceField, StringField, DictField, DynamicField
 from threading import Lock
+
+from mongoengine import Document, DynamicField, ListField, ReferenceField, StringField
 
 from xenian_channel.bot.models.tg_chat import TgChat
 from xenian_channel.bot.models.tg_message import TgMessage
