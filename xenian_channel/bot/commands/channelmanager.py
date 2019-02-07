@@ -1,13 +1,12 @@
 import logging
 import re
 from collections import namedtuple
-from typing import Callable, Dict, Iterable, Tuple, Type
+from typing import Callable, Dict, Iterable, Tuple
 from uuid import uuid4
 from warnings import warn
 
 import emoji
 from bson import DBRef
-from mongoengine import Document
 from telegram import Bot, Chat, InlineKeyboardButton, InlineKeyboardMarkup, Message, Update, User
 from telegram.error import BadRequest, TimedOut
 from telegram.ext import CallbackQueryHandler, Job, MessageHandler, run_async

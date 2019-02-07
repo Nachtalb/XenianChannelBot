@@ -1,6 +1,6 @@
 from functools import wraps
-from typing import Callable, Dict
 from inspect import getfullargspec
+from typing import Callable, Dict
 
 from telegram import Bot, Chat, Update, User
 from telegram.error import NetworkError, TimedOut
