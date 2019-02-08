@@ -667,7 +667,8 @@ class ChannelManager(BaseCommand):
 
         # Move items to queue
         self.tg_state.state = self.tg_state.SEND_LOCKED
-        messages = filter(None, map(lambda msg: resolve_dbref(TgMessage, msg), self.tg_current_channel.added_messages))
+        messages = list(filter(None, map(
+            lambda msg: resolve_dbref(TgMessage, msg), self.tg_current_channel.added_messages)))
 
         uuid = None
         self.tg_current_channel.queued_messages = self.tg_current_channel.queued_messages or {}
