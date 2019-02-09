@@ -20,7 +20,7 @@ class ChannelSettings(Document):
     added_messages = ListField(ReferenceField(TgMessage))
 
     # should actually be DictField(ListField(ReferenceField(TgMessage))) but it has errors if used like so
-    queued_messages = DynamicField()
+    queued_messages = DynamicField(default={})
 
     save_lock = Lock()
 
