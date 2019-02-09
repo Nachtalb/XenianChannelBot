@@ -1,7 +1,7 @@
 Changelog
 =========
 
-0.3.1 (unreleased)
+0.3.1 (2019-02-09)
 ------------------
 
 - Fix title in readme
