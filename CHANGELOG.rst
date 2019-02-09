@@ -4,7 +4,7 @@ Changelog
 0.3.2 (unreleased)
 ------------------
 
-- Nothing changed yet.
+- Fix error when saving channel without changed fields
 
 
 0.3.1 (2019-02-09)
