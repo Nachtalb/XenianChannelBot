@@ -30,6 +30,11 @@ class ChannelSettings(Document):
     def save(self, *args, **kwargs):
         try:
             self.save_lock.acquire()
+            if 'sent_messages' in self._changed_fields:
+                before = self._get_collection().find_one(({'_id': self.pk}))
+                newly_sent = filter(lambda item: item.message_id not in before['sent_messages'], self.sent_messages)
+                for message in newly_sent:
+                    message.add_to_image_match(metadata={'chat_id': self.chat.id})
             super().save(*args, **kwargs)
         finally:
             self.save_lock.release()

@@ -6,7 +6,6 @@ from uuid import uuid4
 from warnings import warn
 
 import emoji
-from bson import DBRef
 from telegram import Bot, Chat, InlineKeyboardButton, InlineKeyboardMarkup, Message, Update, User
 from telegram.error import BadRequest, TimedOut
 from telegram.ext import CallbackQueryHandler, Job, MessageHandler, run_async
@@ -343,6 +342,21 @@ class ChannelManager(BaseCommand):
                 continue
             yield from message.file_ids
 
+    def get_similar_in_channel(self, min_similarity: float or int = None, message: TgMessage = None,
+                               channel: TgChat = None, exclude_own: bool = False) -> list:
+        message = message or self.tg_message
+        channel = channel or self.tg_current_channel.chat
+        min_similarity = min_similarity or 1
+
+        results = []
+        for entry in message.find_similar(self.bot):
+            if 'chat_id' not in (entry['metadata'] or {}) or (exclude_own and entry['dist'] == 0.0):
+                continue
+
+            if entry['dist'] <= min_similarity and entry['metadata']['chat_id'] == channel.id:
+                results.append(entry)
+        return results
+
     # # # # # # # # # # # # # # # # # # #
     # END Helper                        #
     # # # # # # # # # # # # # # # # # # #
@@ -462,15 +476,30 @@ class ChannelManager(BaseCommand):
             return
 
         file_ids = self.get_all_file_ids_of_channel(self.tg_current_channel)
-        if [id for id in self.tg_message.file_ids if id in file_ids]:
+        similar_images = self.get_similar_in_channel()
+        if [id for id in self.tg_message.file_ids if id in file_ids] \
+                or [entry for entry in similar_images if entry['dist'] == 0.0]:
             self.message.reply_text('Message was already sent once or is queued.',
                                     reply_message_id=self.message.message_id)
         else:
+            already_sent_temp = '\n{prefix} to {percentage}% already sent.'
+            additional_buttons = []
+            text = ''
+            if [entry for entry in similar_images if entry['dist'] <= 0.1]:
+                text = already_sent_temp.format(prefix=emoji.emojize(':stop_sign:'), percentage='90')
+            elif [entry for entry in similar_images if entry['dist'] <= 0.3]:
+                text = already_sent_temp.format(prefix=emoji.emojize(':warning:'), percentage='70')
+            if text:
+                additional_buttons.append([self.convert_button(self.create_button(text=text, prefix='nothing'))])
+
             self.tg_message.save()
             self.tg_current_channel.added_messages.append(self.tg_message)
             self.tg_current_channel.save()
 
             method, include_kwargs, reaction_dict = self.prepare_send_message(self.tg_message, is_preview=True)
+            if additional_buttons:
+                include_kwargs['reply_markup'].inline_keyboard.extend(additional_buttons)
+
             method(chat_id=self.chat.id, disable_notification=True, reply_message_id=self.message.message_id,
                    **include_kwargs)
 
