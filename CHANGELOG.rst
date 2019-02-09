@@ -1,7 +1,7 @@
 Changelog
 =========
 
-0.3.2 (unreleased)
+0.3.2 (2019-02-09)
 ------------------
 
 - Fix error when saving channel without changed fields
