@@ -1,5 +1,5 @@
-Xenian Bot
-==========
+Xenian Channel Bot
+==================
 
 `@XenianChannelBot <https://t.me/XenianChannelBot>`__ \|
 `GitHub <https://github.com/Nachtalb/XenianChannelBot>`__

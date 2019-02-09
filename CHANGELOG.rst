@@ -4,7 +4,7 @@ Changelog
 0.3.1 (unreleased)
 ------------------
 
-- Nothing changed yet.
+- Fix title in readme
 
 
 0.3.0 (2019-02-09)
