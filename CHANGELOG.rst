@@ -1,7 +1,7 @@
 Changelog
 =========
 
-0.2.2 (unreleased)
+0.3.0 (2019-02-09)
 ------------------
 
 - Find similar images among sent ones, to prevent sending the same image twice
