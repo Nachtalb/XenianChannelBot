@@ -6,7 +6,6 @@ from uuid import uuid4
 from warnings import warn
 
 import emoji
-from bson import DBRef
 from telegram import Bot, Chat, InlineKeyboardButton, InlineKeyboardMarkup, Message, Update, User
 from telegram.error import BadRequest, TimedOut
 from telegram.ext import CallbackQueryHandler, Job, MessageHandler, run_async
@@ -311,7 +310,8 @@ class ChannelManager(BaseCommand):
             for index in range(0, len(reactions), 4)
         ]
 
-    def get_all_file_ids_of_channel(self, channel_settings: ChannelSettings, force_reload: bool = False) -> Iterable[int]:
+    def get_all_file_ids_of_channel(self, channel_settings: ChannelSettings, force_reload: bool = False) -> Iterable[
+        int]:
         yield from self.get_sent_file_id_of_chat(channel_settings.chat, force_reload)
         yield from self.get_queued_file_ids_of_channel(channel_settings)
         yield from self.get_added_file_ids_of_channel(channel_settings)
@@ -342,6 +342,21 @@ class ChannelManager(BaseCommand):
             if message is None:
                 continue
             yield from message.file_ids
+
+    def get_similar_in_channel(self, min_similarity: float or int = None, message: TgMessage = None,
+                               channel: TgChat = None, exclude_own: bool = False) -> list:
+        message = message or self.tg_message
+        channel = channel or self.tg_current_channel.chat
+        min_similarity = min_similarity or 1
+
+        results = []
+        for entry in message.find_similar(self.bot):
+            if 'chat_id' not in (entry['metadata'] or {}) or (exclude_own and entry['dist'] == 0.0):
+                continue
+
+            if entry['dist'] <= min_similarity and entry['metadata']['chat_id'] == channel.id:
+                results.append(entry)
+        return results
 
     # # # # # # # # # # # # # # # # # # #
     # END Helper                        #
@@ -418,6 +433,8 @@ class ChannelManager(BaseCommand):
             self.change_reactions_message_handler()
         elif self.tg_state.state == self.tg_state.CREATE_SINGLE_POST:
             self.queue_message_message_handler()
+        elif self.tg_state.state == self.tg_state.IMPORT_MESSAGES:
+            self.add_message_to_import_queue_message_handler()
 
     @run_async
     def register_channel_message_handler(self):
@@ -462,20 +479,56 @@ class ChannelManager(BaseCommand):
             return
 
         file_ids = self.get_all_file_ids_of_channel(self.tg_current_channel)
-        if [id for id in self.tg_message.file_ids if id in file_ids]:
+        similar_images = self.get_similar_in_channel()
+        if [id for id in self.tg_message.file_ids if id in file_ids] \
+                or [entry for entry in similar_images if entry['dist'] == 0.0]:
             self.message.reply_text('Message was already sent once or is queued.',
                                     reply_message_id=self.message.message_id)
         else:
+            already_sent_temp = '\n{prefix} to {percentage}% already sent.'
+            additional_buttons = []
+            text = ''
+            if [entry for entry in similar_images if entry['dist'] <= 0.1]:
+                text = already_sent_temp.format(prefix=emoji.emojize(':stop_sign:'), percentage='90')
+            elif [entry for entry in similar_images if entry['dist'] <= 0.3]:
+                text = already_sent_temp.format(prefix=emoji.emojize(':warning:'), percentage='70')
+            if text:
+                additional_buttons.append([self.convert_button(self.create_button(text=text, prefix='nothing'))])
+
             self.tg_message.save()
             self.tg_current_channel.added_messages.append(self.tg_message)
             self.tg_current_channel.save()
 
             method, include_kwargs, reaction_dict = self.prepare_send_message(self.tg_message, is_preview=True)
+            if additional_buttons:
+                include_kwargs['reply_markup'].inline_keyboard.extend(additional_buttons)
+
             method(chat_id=self.chat.id, disable_notification=True, reply_message_id=self.message.message_id,
                    **include_kwargs)
 
         job = job_queue.run_once(
             lambda bot_, _job, **__: self.create_post_menu(recreate_message=True, *args, **kwargs),
+            when=1
+        )
+        JobsQueue(user_id=self.user.id, job=job, type=JobsQueue.types.SEND_BUTTON_MESSAGE, replaceable=True)
+
+    def add_message_to_import_queue_message_handler(self):
+        if not (self.message.text or self.message.photo or self.message.video or self.message.audio or
+                self.message.voice or self.message.document or self.message.animation or self.message.sticker or
+                self.message.video_note):
+            self.message.reply_text('This type of message is not supported.', reply_message_id=self.message.message_id)
+            return
+
+        if self.tg_message in self.tg_current_channel.sent_messages:
+            self.message.reply_text('I know this message already', disable_notification=True,
+                                    reply_message_id=self.message.message_id)
+        else:
+            self.tg_message.save()
+            self.tg_current_channel.import_messages.append(self.tg_message)
+            self.tg_current_channel.save()
+
+        job = job_queue.run_once(
+            lambda bot_, _job, **__: self.import_messages_menu(recreate_message=True),
             when=1
         )
         JobsQueue(user_id=self.user.id, job=job, type=JobsQueue.types.SEND_BUTTON_MESSAGE, replaceable=True)
@@ -557,6 +610,9 @@ class ChannelManager(BaseCommand):
                 self.create_button('Settings', callback=self.settings_menu),
             ],
             [
+                self.create_button('Import messages', callback=self.import_messages_menu)
+            ],
+            [
                 self.create_button('Back', callback=self.list_channels_menu)
             ]
         ]
@@ -564,6 +620,33 @@ class ChannelManager(BaseCommand):
         chat_name = self.get_username_or_link(self.tg_current_channel)
         self.create_or_update_button_message(text=f'Channel: {chat_name}\nWhat do you want to do?',
                                              reply_markup=self.convert_buttons(buttons))
+
+    @run_async
+    def import_messages_menu(self, **kwargs):
+        self.tg_state.state = self.tg_state.IMPORT_MESSAGES
+
+        buttons = [
+            [
+                self.create_button('Finish', callback=self.import_sent_messages_callback_query,
+                                   confirmation_requred=True, abort_callback=self.import_messages_menu)
+            ],
+            [
+                self.create_button('Clear import queue', callback=self.clear_import_queue_callback_query,
+                                   confirmation_requred=True, abort_callback=self.import_messages_menu)
+            ],
+            [
+                self.create_button('Back', callback=self.channel_actions_menu)
+            ]
+        ]
+
+        recreate_message = kwargs.get('recreate_message', False)
+        chat_name = self.get_username_or_link(self.tg_current_channel, is_markdown=True)
+        self.create_or_update_button_message(
+            text=f'Channel: {chat_name}\nForward me messages from your channel or upload images to import them as '
+            f'"sent messages". \nLike this I can check if a message has already been sent when you create a post.\n\n'
+            f'When all messages has been sent, hit the "Finish" button. The back button will cancel the import.\n\n'
+            f'Currently in the queue: `{len(self.tg_current_channel.import_messages)}`',
+            reply_markup=self.convert_buttons(buttons), parse_mode=ParseMode.MARKDOWN, create=recreate_message)
 
     @run_async
     def create_post_menu(self, recreate_message: bool = False, **kwargs):
@@ -739,6 +822,44 @@ class ChannelManager(BaseCommand):
         self.tg_current_channel.added_messages = []
         self.tg_current_channel.save()
         self.message.reply_text(text='Queue cleared')
+
+        self.create_post_menu(recreate_message=True)
+
+    @run_async
+    def clear_import_queue_callback_query(self, **kwargs):
+        self.tg_current_channel.import_messages = []
+        self.tg_current_channel.save()
+        self.message.reply_text(text='Queue cleared')
+
+        self.create_post_menu(recreate_message=True)
+
+    @run_async
+    def import_sent_messages_callback_query(self, **kwargs):
+        uuid = str(uuid4())
+        self.tg_current_channel.import_messages_queue[uuid] = self.tg_current_channel.import_messages
+        self.tg_current_channel.import_messages = []
+        self.tg_current_channel.save()
+
+        progress_bar = TelegramProgressBar(
+            bot=self.bot,
+            chat_id=self.chat.id,
+            pre_message='Importing messages [{current}/{total}]',
+            se_message='This could take some time.',
+        )
+
+        for message in progress_bar(self.tg_current_channel.import_messages_queue[uuid][:]):
+            try:
+                message.add_to_image_match(self.bot, metadata={'chat_id': self.tg_current_channel.chat.id})
+                self.tg_current_channel.import_messages_queue[uuid].remove(message)
+                self.tg_current_channel.save()
+            except (BaseException, Exception) as error:
+                self.tg_current_channel.import_messages = self.tg_current_channel.import_messages_queue[uuid]
+                del self.tg_current_channel.import_messages_queue[uuid]
+                self.tg_current_channel.save()
+
+                self.message.reply_text('An error occurred while importing the messages. Try again or contact an admin')
+                self.create_post_menu(recreate_message=True)
+                raise error
 
         self.create_post_menu(recreate_message=True)
 

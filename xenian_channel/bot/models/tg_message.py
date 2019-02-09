@@ -1,8 +1,9 @@
 from typing import Generator
 
 from mongoengine import BooleanField, DictField, LongField, ReferenceField
-from telegram import Message
+from telegram import Bot, Message
 
+from xenian_channel.bot import image_match_ses
 from xenian_channel.bot.models.telegram import TelegramDocument
 from xenian_channel.bot.models.tg_chat import TgChat
 from xenian_channel.bot.models.tg_user import TgUser
@@ -62,3 +63,43 @@ class TgMessage(TelegramDocument):
                 self._file_id.append(file['file_id'])
 
         yield from self._file_id
+
+    def is_any_type_of(self, types: list or str) -> str or None:
+        if isinstance(types, str):
+            types = [types]
+
+        for type in types:
+            if self.original_object.get(type):
+                return type
+
+    def find_similar(self, bot: Bot = None) -> list:
+        if (not bot and not self._bot) or self.is_any_type_of(['photo', 'sticker']) is None:
+            return []
+        self._bot = bot or self._bot
+        file_id = next(iter(self.file_ids), None)
+
+        if not file_id:
+            return []
+
+        file = self._bot.get_file(file_id=file_id)
+        return image_match_ses.search_image(file.file_path)
+
+    def get_self_image_match(self, bot: Bot = None) -> dict or None:
+        results = self.find_similar(bot)
+
+        for result in results:
+            if result['dist'] == 0.0:
+                return result
+
+    def add_to_image_match(self, bot: Bot = None, metadata: dict = None) -> dict or None:
+        if not bot and not self._bot:
+            return []
+        self._bot = bot or self._bot
+        file_id = next(iter(self.file_ids), None)
+
+        if not file_id:
+            return []
+
+        file = self._bot.get_file(file_id=file_id)
+        image_match_ses.add_image(file.file_path, metadata=metadata)
+        return self.get_self_image_match()
