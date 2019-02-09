@@ -4,7 +4,8 @@ Changelog
 0.2.2 (unreleased)
 ------------------
 
-- Nothing changed yet.
+- Find similar images among sent ones, to prevent sending the same image twice
+- Add new option to import sent messages to prevent sending duplicates
 
 
 0.2.1 (2019-02-07)
