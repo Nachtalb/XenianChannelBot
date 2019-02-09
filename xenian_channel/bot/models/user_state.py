@@ -13,6 +13,7 @@ class UserState(Document):
     ADDING_CHANNEL = 'adding channel'
     REMOVING_CHANNEL = 'removing channel'
     CHANNEL_ACTIONS = 'channel actions'
+    IMPORT_MESSAGES = 'import messages'
     IN_SETTINGS = 'in settings'
     CHANGE_DEFAULT_CAPTION = 'change default caption'
     CHANGE_DEFAULT_REACTION = 'change default reaction'
