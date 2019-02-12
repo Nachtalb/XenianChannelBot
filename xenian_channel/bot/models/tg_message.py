@@ -92,7 +92,7 @@ class TgMessage(TelegramDocument):
                 return result
 
     def add_to_image_match(self, bot: Bot = None, metadata: dict = None) -> dict or None:
-        if not bot and not self._bot:
+        if (not bot and not self._bot) or self.is_any_type_of('photo', 'sticker') is None:
             return []
         self._bot = bot or self._bot
         file_id = next(iter(self.file_ids), None)
