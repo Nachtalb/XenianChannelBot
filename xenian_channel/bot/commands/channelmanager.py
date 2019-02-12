@@ -858,10 +858,10 @@ class ChannelManager(BaseCommand):
                 self.tg_current_channel.save()
 
                 self.message.reply_text('An error occurred while importing the messages. Try again or contact an admin')
-                self.create_post_menu(recreate_message=True)
+                self.import_messages_menu(recreate_message=True)
                 raise error
 
-        self.create_post_menu(recreate_message=True)
+        self.import_messages_menu(recreate_message=True)
 
     @run_async
     def remove_from_queue_callback_query(self, button: Button):
