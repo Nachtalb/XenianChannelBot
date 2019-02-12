@@ -853,7 +853,7 @@ class ChannelManager(BaseCommand):
                 self.tg_current_channel.import_messages_queue[uuid].remove(message)
                 self.tg_current_channel.save()
             except (BaseException, Exception) as error:
-                self.tg_current_channel.import_messages = self.tg_current_channel.import_messages_queue[uuid]
+                self.tg_current_channel.import_messages = self.tg_current_channel.import_messages_queue[uuid][:]
                 del self.tg_current_channel.import_messages_queue[uuid]
                 self.tg_current_channel.save()
 
