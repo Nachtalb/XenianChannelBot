@@ -1,7 +1,7 @@
 Changelog
 =========
 
-0.3.3 (unreleased)
+0.3.3 (2019-02-13)
 ------------------
 
 - Fix issue with opening wrong menu after importing messages
