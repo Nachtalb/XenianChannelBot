@@ -64,7 +64,7 @@ class TgMessage(TelegramDocument):
 
         yield from self._file_id
 
-    def is_any_type_of(self, types: list or str) -> str or None:
+    def is_any_type_of(self, *types: str) -> str or None:
         if isinstance(types, str):
             types = [types]
 
@@ -73,7 +73,7 @@ class TgMessage(TelegramDocument):
                 return type
 
     def find_similar(self, bot: Bot = None) -> list:
-        if (not bot and not self._bot) or self.is_any_type_of(['photo', 'sticker']) is None:
+        if (not bot and not self._bot) or self.is_any_type_of('photo', 'sticker') is None:
             return []
         self._bot = bot or self._bot
         file_id = next(iter(self.file_ids), None)
@@ -92,7 +92,7 @@ class TgMessage(TelegramDocument):
                 return result
 
     def add_to_image_match(self, bot: Bot = None, metadata: dict = None) -> dict or None:
-        if not bot and not self._bot:
+        if (not bot and not self._bot) or self.is_any_type_of('photo', 'sticker') is None:
             return []
         self._bot = bot or self._bot
         file_id = next(iter(self.file_ids), None)

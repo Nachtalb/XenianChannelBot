@@ -793,8 +793,8 @@ class ChannelManager(BaseCommand):
 
                     self.tg_current_channel.queued_messages[uuid].remove(stored_message)
                     self.tg_current_channel.sent_messages.append(new_tg_message)
-            except TimedOut as e:
-                warn(e)
+            except TimedOut:
+                pass
             except (BaseException, Exception) as e:
                 if not preview:
                     # Move queued messages back to added messages if an error occurs
@@ -853,15 +853,15 @@ class ChannelManager(BaseCommand):
                 self.tg_current_channel.import_messages_queue[uuid].remove(message)
                 self.tg_current_channel.save()
             except (BaseException, Exception) as error:
-                self.tg_current_channel.import_messages = self.tg_current_channel.import_messages_queue[uuid]
+                self.tg_current_channel.import_messages = self.tg_current_channel.import_messages_queue[uuid][:]
                 del self.tg_current_channel.import_messages_queue[uuid]
                 self.tg_current_channel.save()
 
                 self.message.reply_text('An error occurred while importing the messages. Try again or contact an admin')
-                self.create_post_menu(recreate_message=True)
+                self.import_messages_menu(recreate_message=True)
                 raise error
 
-        self.create_post_menu(recreate_message=True)
+        self.import_messages_menu(recreate_message=True)
 
     @run_async
     def remove_from_queue_callback_query(self, button: Button):

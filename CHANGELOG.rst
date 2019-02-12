@@ -4,7 +4,9 @@ Changelog
 0.3.3 (unreleased)
 ------------------
 
-- Nothing changed yet.
+- Fix issue with opening wrong menu after importing messages
+- Fix not checking message type before importing a message
+- Fix crash on timed out error
 
 
 0.3.2 (2019-02-09)
