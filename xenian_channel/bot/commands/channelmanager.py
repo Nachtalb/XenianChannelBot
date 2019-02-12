@@ -793,8 +793,8 @@ class ChannelManager(BaseCommand):
 
                     self.tg_current_channel.queued_messages[uuid].remove(stored_message)
                     self.tg_current_channel.sent_messages.append(new_tg_message)
-            except TimedOut as e:
-                warn(e)
+            except TimedOut:
+                pass
             except (BaseException, Exception) as e:
                 if not preview:
                     # Move queued messages back to added messages if an error occurs
