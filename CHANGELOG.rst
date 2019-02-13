@@ -9,6 +9,7 @@ Changelog
     This means that data was lost by messages overriding themselves. This can't be fully fixed. But it will not
     happen in the future anymore.
 - Add message scheduling option (atm limited to 10 msg/h)
+- Add posts to sent messages which were directly posted to the channel
 
 
 0.3.3 (2019-02-13)

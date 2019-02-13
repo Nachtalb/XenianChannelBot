@@ -2,6 +2,7 @@ import logging
 import re
 from collections import namedtuple
 from datetime import datetime, timedelta
+from itertools import chain
 from typing import Callable, Dict, Iterable, List, Tuple
 from uuid import uuid4
 
@@ -501,6 +502,7 @@ class ChannelManager(BaseCommand):
         """Dispatch messages to correct function, defied by the users state
         """
         if self.update.channel_post:
+            self.add_channel_post_message_handler()
             return
 
         if self.tg_state.state == self.tg_state.ADDING_CHANNEL:
@@ -513,6 +515,17 @@ class ChannelManager(BaseCommand):
             self.queue_message_message_handler()
         elif self.tg_state.state == self.tg_state.IMPORT_MESSAGES:
             self.add_message_to_import_queue_message_handler()
+
+    def add_channel_post_message_handler(self):
+        channel = ChannelSettings.objects(chat=self.tg_message.chat).first()
+
+        blacklist = channel.sent_messages + list(chain.from_iterable(map(dict.values, channel.queued_messages)))
+        if self.tg_message in blacklist:
+            return
+
+        self.tg_message.save()
+        channel.sent_messages.append(self.tg_message)
+        channel.save()
 
     @run_async
     def register_channel_message_handler(self):
