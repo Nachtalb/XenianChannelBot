@@ -1,7 +1,7 @@
 Changelog
 =========
 
-0.4.1 (unreleased)
+0.4.1 (2019-02-25)
 ------------------
 
 - Fix errors in migration
