@@ -1,9 +1,9 @@
 import logging
 import re
 from collections import namedtuple
-from typing import Callable, Dict, Iterable, Tuple
+from datetime import datetime, timedelta
+from typing import Callable, Dict, Iterable, List, Tuple
 from uuid import uuid4
-from warnings import warn
 
 import emoji
 from telegram import Bot, Chat, InlineKeyboardButton, InlineKeyboardMarkup, Message, Update, User
@@ -116,6 +116,9 @@ class ChannelManager(BaseCommand):
             if self.tg_state.current_channel:
                 self.tg_state.current_channel._bot = self.bot
 
+    def start_hook(self, bot: Bot):
+        self.load_scheduled()
+
     @property
     def tg_current_channel(self):
         return self.tg_state.current_channel
@@ -203,15 +206,16 @@ class ChannelManager(BaseCommand):
             edit=chat_member.can_edit_messages,
         )
 
-    def get_correct_send_message(self, message: Message):
-        method = self.bot.send_message
+    def get_correct_send_message(self, message: Message, bot: Bot = None):
+        bot = bot or self.bot
+        method = bot.send_message
         include_kwargs = {'text': message.text}
 
         if message.photo:
-            method = self.bot.send_photo
+            method = bot.send_photo
             include_kwargs = {'photo': message.photo[-1], 'caption': message.caption}
         elif message.animation:
-            method = self.bot.send_animation
+            method = bot.send_animation
             include_kwargs = {
                 'animation': message.animation,
                 'caption': message.caption,
@@ -221,12 +225,12 @@ class ChannelManager(BaseCommand):
                 'thumb': message.animation.thumb.file_id if message.animation.thumb else None,
             }
         elif message.sticker:
-            method = self.bot.send_sticker
+            method = bot.send_sticker
             include_kwargs = {
                 'sticker': message.sticker,
             }
         elif message.audio:
-            method = self.bot.send_audio
+            method = bot.send_audio
             include_kwargs = {
                 'audio': message.audio,
                 'caption': message.caption,
@@ -236,7 +240,7 @@ class ChannelManager(BaseCommand):
                 'thumb': message.audio.thumb.file_id if message.audio.thumb else None,
             }
         elif message.document:
-            method = self.bot.send_document
+            method = bot.send_document
             include_kwargs = {
                 'document': message.document,
                 'caption': message.caption,
@@ -244,7 +248,7 @@ class ChannelManager(BaseCommand):
                 'thumb': message.document.thumb.file_id if message.document.thumb else None,
             }
         elif message.video:
-            method = self.bot.send_video
+            method = bot.send_video
             include_kwargs = {
                 'video': message.video,
                 'caption': message.caption,
@@ -255,7 +259,7 @@ class ChannelManager(BaseCommand):
                 'thumb': message.video.thumb.file_id if message.video.thumb else None,
             }
         elif message.video_note:
-            method = self.bot.send_video_note
+            method = bot.send_video_note
             include_kwargs = {
                 'video_note': message.video_note,
                 'duration': message.video_note.duration,
@@ -263,7 +267,7 @@ class ChannelManager(BaseCommand):
                 'thumb': message.video_note.thumb.file_id if message.video_note.thumb else None,
             }
         elif message.voice:
-            method = self.bot.send_voice
+            method = bot.send_voice
             include_kwargs = {
                 'voice': message.voice,
                 'duration': message.voice.duration,
@@ -276,16 +280,19 @@ class ChannelManager(BaseCommand):
             print(e)
             pass
 
-    def prepare_send_message(self, message: TgMessage, is_preview: bool = False) -> Tuple[Callable, Dict, Dict]:
-        real_message = message.to_object(self.bot)
-        method, keywords = self.get_correct_send_message(real_message)
+    def prepare_send_message(self, message: TgMessage, is_preview: bool = False, bot: Bot = None,
+                             channel_settings: ChannelSettings = None) -> Tuple[
+        Callable, Dict, Dict]:
+        real_message = message.to_object(bot or self.bot)
+        method, keywords = self.get_correct_send_message(real_message, bot=bot)
+        channel_settings = channel_settings or self.tg_current_channel
 
         buttons = []
 
-        if method == self.bot.send_message:
-            keywords['text'] += f'\n\n{self.tg_current_channel.caption}'
+        if method == bot.send_message:
+            keywords['text'] += f'\n\n{channel_settings.caption}'
         else:
-            keywords['caption'] = self.tg_current_channel.caption
+            keywords['caption'] = channel_settings.caption
 
         if is_preview:
             buttons.extend([[
@@ -293,7 +300,7 @@ class ChannelManager(BaseCommand):
                                    data={'message_id': message.message_id})
             ]])
 
-        reaction_dict = dict((reaction, []) for reaction in message.reactions or self.tg_current_channel.reactions)
+        reaction_dict = dict((reaction, []) for reaction in message.reactions or channel_settings.reactions)
         buttons.extend(self.get_reactions_tg_buttons(reactions=reaction_dict, with_callback=not is_preview))
 
         keywords['reply_markup'] = self.convert_buttons(buttons)
@@ -357,6 +364,77 @@ class ChannelManager(BaseCommand):
             if entry['dist'] <= min_similarity and entry['metadata']['chat_id'] == channel.id:
                 results.append(entry)
         return results
+
+    def load_scheduled(self, channel: ChannelSettings = None, times: List[str] = None):
+        times = times or []
+        if channel:
+            channels = [channel]
+        else:
+            channels = ChannelSettings.objects().all()
+
+        for channel in channels:
+            for time_str, posts in channel.scheduled_messages.items():
+                time = datetime.fromtimestamp(int(time_str))
+                if times and time_str not in times:
+                    continue
+
+                context = {
+                    'channel': channel,
+                    'time': time_str,
+                }
+                messages_str = ', '.join(map(lambda msg: str(msg.message_id), posts))
+                print(f'Scheduling {messages_str} items in {channel.chat.id} at {time}')
+
+                job_queue.run_once(self.send_scheduled_message, when=time, context=context)
+
+    def send_scheduled_message(self, bot: Bot, job: Job, **kwargs):
+        channel, time_str = list(job.context.values())
+        time = datetime.fromtimestamp(int(time_str))
+        messages = channel.scheduled_messages.get(time_str, [])[:]
+
+        if not messages:
+            bot.send_message(chat_id=channel.user.id, text=f'Scheduled messages for `{time}`, could not be sent.',
+                             parse_mode=ParseMode.MARKDOWN)
+            return
+
+        for message in messages:
+            method, include_kwargs, reaction_dict = self.prepare_send_message(message, is_preview=False, bot=bot,
+                                                                              channel_settings=channel)
+
+            try:
+                new_message = method(chat_id=channel.chat.id, **include_kwargs)
+                if not isinstance(new_message, Message):
+                    new_message = new_message.result()
+                new_tg_message = TgMessage(new_message, reactions=reaction_dict)
+                new_tg_message.save()
+
+                with channel.save_contextmanager():
+                    if time in channel.scheduled_messages:
+                        del channel.scheduled_messages[time]
+
+                    if channel in self.sent_file_id_cache:
+                        self.sent_file_id_cache[channel].extend(new_tg_message.file_ids)
+                    else:
+                        self.sent_file_id_cache[channel] = list(new_tg_message.file_ids)
+
+                    channel.sent_messages.append(new_tg_message)
+            except TimedOut:
+                pass
+            except (Exception, BaseException):
+                try:
+                    for message in filter(lambda msg: msg not in channel.sent_messages, messages):
+                        method, include_kwargs, reaction_dict = self.prepare_send_message(
+                            message, is_preview=False, bot=bot)
+                        method(**include_kwargs)
+                except (Exception, BaseException):
+                    pass
+                finally:
+                    bot.send_message(chat_id=channel.user.id, reply_to_message_id=message.message_id,
+                                     text=f'One of the scheduled (`{time}`) messages could not be sent',
+                                     parse_mode=ParseMode.MARKDOWN)
+                    return
+        bot.send_message(chat_id=channel.user.id, text=f'Messages scheduled for `{time}` were sent.',
+                         parse_mode=ParseMode.MARKDOWN)
 
     # # # # # # # # # # # # # # # # # # #
     # END Helper                        #
@@ -590,8 +668,8 @@ class ChannelManager(BaseCommand):
         self.create_or_update_button_message(text='What do you want to do?', reply_markup=real_buttons, create=True)
 
     @run_async
-    def channel_actions_menu(self, button: Button = None):
-        if 'channel_settings_id' in button.data:
+    def channel_actions_menu(self, button: Button = None, recreate_message=False):
+        if button and 'channel_settings_id' in button.data:
             self.tg_current_channel = ChannelSettings.objects(id=button.data['channel_settings_id']).first()
         elif self.tg_current_channel is None:
             self.message.reply_text('An error occured, please try again.')
@@ -613,13 +691,19 @@ class ChannelManager(BaseCommand):
                 self.create_button('Import messages', callback=self.import_messages_menu)
             ],
             [
+                self.create_button('Scheduled', callback=self.send_scheduled_callback_query),
+                self.create_button('Clear scheduled', callback=self.clear_scheduled_callback_query,
+                                   confirmation_requred=True, abort_callback=self.channel_actions_menu)
+            ],
+            [
                 self.create_button('Back', callback=self.list_channels_menu)
             ]
         ]
 
         chat_name = self.get_username_or_link(self.tg_current_channel)
         self.create_or_update_button_message(text=f'Channel: {chat_name}\nWhat do you want to do?',
-                                             reply_markup=self.convert_buttons(buttons))
+                                             reply_markup=self.convert_buttons(buttons),
+                                             create=recreate_message)
 
     @run_async
     def import_messages_menu(self, **kwargs):
@@ -660,6 +744,8 @@ class ChannelManager(BaseCommand):
             ],
             [
                 self.create_button('Send', callback=self.send_post_callback_query, confirmation_requred=True,
+                                   abort_callback=self.create_post_menu),
+                self.create_button('Schedule 10/h', callback=self.schedule_callback_query, confirmation_requred=True,
                                    abort_callback=self.create_post_menu)
             ],
             [
@@ -740,6 +826,63 @@ class ChannelManager(BaseCommand):
 
         self.update.effective_message.reply_text('Channel was removed')
         self.list_channels_menu()
+
+    @run_async
+    def send_scheduled_callback_query(self, **kwargs):
+        messages = self.tg_current_channel.scheduled_messages
+        if not messages:
+            self.message.reply_text('No messages scheduled')
+        else:
+            self.message.reply_text('Messages were scheduled at:\n{}'.format(
+                '\n'.join(map(lambda item: f'`{datetime.fromtimestamp(int(item[0]))}:` {len(item[1])} messages',
+                              messages.items()))
+            ), parse_mode=ParseMode.MARKDOWN)
+        self.channel_actions_menu(recreate_message=True)
+
+    @run_async
+    def clear_scheduled_callback_query(self, **kwargs):
+        self.tg_current_channel.scheduled_messages = {}
+        self.tg_current_channel.save()
+        self.message.reply_text('Schedule was cleared')
+        self.channel_actions_menu(recreate_message=True)
+
+    @run_async
+    def schedule_callback_query(self, **kwargs):
+        messages = self.tg_current_channel.added_messages[:]
+        self.tg_current_channel.added_messages = []
+
+        timedelta_now = timedelta(seconds=1)
+        timedelta_hourly = timedelta(hours=1)
+        time_now = datetime.now() + timedelta_now
+
+        temp_list = []
+        times = {}
+        hours_counter = 0
+        for index, message in enumerate(messages):
+            temp_list.append(message)
+
+            if (index + 1) % 10 == 0:
+                time = time_now + (timedelta_hourly * hours_counter)
+                time_str = str(int(time.timestamp()))
+                times[time_str] = temp_list[:]
+                self.tg_current_channel.scheduled_messages[time_str] = times[time_str]
+                hours_counter += 1
+                temp_list = []
+
+        if temp_list:
+            time = time_now + (timedelta_hourly * hours_counter)
+            time_str = str(int(time.timestamp()))
+            times[time_str] = temp_list[:]
+            self.tg_current_channel.scheduled_messages[time_str] = times[time_str]
+
+        self.tg_current_channel.save()
+
+        self.load_scheduled(channel=self.tg_current_channel, times=list(times.keys()))
+        self.message.reply_text('Messages were scheduled at:\n{}'.format(
+            '\n'.join(map(lambda item: f'`{datetime.fromtimestamp(int(item[0]))}:` {len(item[1])} messages',
+                          times.items()))
+        ), parse_mode=ParseMode.MARKDOWN)
+        self.create_post_menu(recreate_message=True)
 
     # Post section
     @run_async

@@ -105,11 +105,13 @@ def main():
         updater.start_webhook(listen=webhook['listen'], port=webhook['port'], url_path=webhook['url_path'])
         updater.bot.set_webhook(url=webhook['url'])
         send_message_if_reboot()
+        BaseCommand.bot_started(updater.bot)
         logger.info(f'Starting webhook as: @{me.username} [{me.link}]')
     else:
         updater.start_polling()
         logger.info(f'Start polling as: @{me.username} [{me.link}]')
         send_message_if_reboot()
+        BaseCommand.bot_started(updater.bot)
         updater.idle()
 
 

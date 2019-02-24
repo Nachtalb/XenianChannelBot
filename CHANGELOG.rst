@@ -8,6 +8,7 @@ Changelog
 - Partially fix messages database issues. The ID of messages are only chat unique but they were used as primary keys.
     This means that data was lost by messages overriding themselves. This can't be fully fixed. But it will not
     happen in the future anymore.
+- Add message scheduling option (atm limited to 10 msg/h)
 
 
 0.3.3 (2019-02-13)

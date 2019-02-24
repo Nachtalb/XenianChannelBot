@@ -113,6 +113,12 @@ class BaseCommand:
             self.tg_message = TgMessage.from_object(self.message)
             self.tg_message.save()
 
+    @classmethod
+    def bot_started(cls, bot: Bot):
+        for command_class in BaseCommand.all_commands:
+            if hasattr(command_class, 'start_hook'):
+                command_class.start_hook(bot)
+
     def normalize_commands(self):
         """Normalize commands faults, add defaults and add them to :obj:`BaseCommand.all_commands`
         """
