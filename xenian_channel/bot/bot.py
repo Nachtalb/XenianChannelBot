@@ -98,16 +98,17 @@ def main():
 
     # log all errors
     dispatcher.add_error_handler(error)
+    me = updater.bot.get_me()
 
     if MODE['active'] == 'webhook':
         webhook = MODE['webhook']
         updater.start_webhook(listen=webhook['listen'], port=webhook['port'], url_path=webhook['url_path'])
         updater.bot.set_webhook(url=webhook['url'])
         send_message_if_reboot()
-        logger.info('Starting webhook...')
+        logger.info(f'Starting webhook as: @{me.username} [{me.link}]')
     else:
         updater.start_polling()
-        logger.info('Start polling...')
+        logger.info(f'Start polling as: @{me.username} [{me.link}]')
         send_message_if_reboot()
         updater.idle()
 

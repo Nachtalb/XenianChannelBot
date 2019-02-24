@@ -4,7 +4,10 @@ Changelog
 0.3.4 (unreleased)
 ------------------
 
-- Nothing changed yet.
+- Put username and link of bot into start message
+- Partially fix messages database issues. The ID of messages are only chat unique but they were used as primary keys.
+    This means that data was lost by messages overriding themselves. This can't be fully fixed. But it will not
+    happen in the future anymore.
 
 
 0.3.3 (2019-02-13)
