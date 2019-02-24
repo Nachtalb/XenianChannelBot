@@ -392,8 +392,10 @@ class ChannelManager(BaseCommand):
         time = datetime.fromtimestamp(int(time_str))
         messages = channel.scheduled_messages.get(time_str, [])[:]
 
+        channel_link = self.get_username_or_link(channel.chat, is_markdown=True)
         if not messages:
-            bot.send_message(chat_id=channel.user.id, text=f'Scheduled messages for `{time}`, could not be sent.',
+            bot.send_message(chat_id=channel.user.id,
+                             text=f'Scheduled messages for {channel_link} at `{time}`, could not be sent.',
                              parse_mode=ParseMode.MARKDOWN)
             return
 
@@ -433,10 +435,10 @@ class ChannelManager(BaseCommand):
                     pass
                 finally:
                     bot.send_message(chat_id=channel.user.id, reply_to_message_id=message.message_id,
-                                     text=f'One of the scheduled (`{time}`) messages could not be sent',
+                                     text=f'One of the scheduled (`{time}`) messages for {channel_link} could not be sent',
                                      parse_mode=ParseMode.MARKDOWN)
                     return
-        bot.send_message(chat_id=channel.user.id, text=f'Messages scheduled for `{time}` were sent.',
+        bot.send_message(chat_id=channel.user.id, text=f'Messages scheduled for {channel_link} at `{time}` were sent.',
                          parse_mode=ParseMode.MARKDOWN)
 
     # # # # # # # # # # # # # # # # # # #
