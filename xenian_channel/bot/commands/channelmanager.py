@@ -283,7 +283,8 @@ class ChannelManager(BaseCommand):
     def prepare_send_message(self, message: TgMessage, is_preview: bool = False, bot: Bot = None,
                              channel_settings: ChannelSettings = None) -> Tuple[
         Callable, Dict, Dict]:
-        real_message = message.to_object(bot or self.bot)
+        bot = bot or self.bot
+        real_message = message.to_object(bot)
         method, keywords = self.get_correct_send_message(real_message, bot=bot)
         channel_settings = channel_settings or self.tg_current_channel
 
