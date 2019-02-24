@@ -1,7 +1,9 @@
 from typing import Generator
 
+from elasticsearch.exceptions import ConnectionError, NotFoundError
 from mongoengine import BooleanField, DictField, LongField, ReferenceField
-from telegram import Bot, Message
+from telegram import Bot, File, Message
+from urllib3.exceptions import NewConnectionError
 
 from xenian_channel.bot import image_match_ses
 from xenian_channel.bot.models.telegram import TelegramDocument
@@ -28,7 +30,7 @@ class TgMessage(TelegramDocument):
     class Meta:
         original = Message
 
-    message_id = LongField(primary_key=True)
+    message_id = LongField()
 
     chat = ReferenceField(TgChat)
     from_user = ReferenceField(TgUser)
@@ -39,8 +41,18 @@ class TgMessage(TelegramDocument):
 
     is_current_message = BooleanField(default=False)
 
+    def __new__(cls, *args, **kwargs):
+        first_arg = next(iter(args), None)
+        if first_arg is not None and isinstance(first_arg, Message):
+            chat = TgChat.objects(id=first_arg.chat.id).first()
+            obj = cls.objects(message_id=first_arg.message_id, chat=chat).first()
+            if obj:
+                obj.self_from_object(first_arg)
+                return obj
+        return super().__new__(cls)
+
     def __repr__(self):
-        return f'{super().__repr__()} - {self.message_id}'
+        return f'{super().__repr__()} - {self.message_id}:{self.chat.id}'
 
     @property
     def file_ids(self) -> Generator[int, None, None]:
@@ -72,17 +84,25 @@ class TgMessage(TelegramDocument):
             if self.original_object.get(type):
                 return type
 
-    def find_similar(self, bot: Bot = None) -> list:
+    def _get_file_for_image_search(self, bot: Bot) -> File or None:
         if (not bot and not self._bot) or self.is_any_type_of('photo', 'sticker') is None:
-            return []
+            return
         self._bot = bot or self._bot
         file_id = next(iter(self.file_ids), None)
 
         if not file_id:
-            return []
+            return
 
-        file = self._bot.get_file(file_id=file_id)
-        return image_match_ses.search_image(file.file_path)
+        return self._bot.get_file(file_id=file_id)
+
+    def find_similar(self, bot: Bot = None) -> list:
+        file = self._get_file_for_image_search(bot)
+        if not file:
+            return []
+        try:
+            return image_match_ses.search_image(file.file_path)
+        except (ConnectionError, NewConnectionError, NotFoundError):
+            return []
 
     def get_self_image_match(self, bot: Bot = None) -> dict or None:
         results = self.find_similar(bot)
@@ -92,14 +112,11 @@ class TgMessage(TelegramDocument):
                 return result
 
     def add_to_image_match(self, bot: Bot = None, metadata: dict = None) -> dict or None:
-        if (not bot and not self._bot) or self.is_any_type_of('photo', 'sticker') is None:
-            return []
-        self._bot = bot or self._bot
-        file_id = next(iter(self.file_ids), None)
-
-        if not file_id:
-            return []
-
-        file = self._bot.get_file(file_id=file_id)
-        image_match_ses.add_image(file.file_path, metadata=metadata)
+        file = self._get_file_for_image_search(bot)
+        if not file:
+            return
+        try:
+            image_match_ses.add_image(file.file_path, metadata=metadata)
+        except (ConnectionError, NewConnectionError, NotFoundError):
+            return
         return self.get_self_image_match()

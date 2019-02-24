@@ -1,6 +1,8 @@
 from threading import Lock
 
+from elasticsearch.exceptions import ConnectionError, NotFoundError
 from mongoengine import Document, DynamicField, ListField, ReferenceField, StringField
+from urllib3.exceptions import NewConnectionError
 
 from xenian_channel.bot.models.tg_chat import TgChat
 from xenian_channel.bot.models.tg_message import TgMessage
@@ -32,11 +34,15 @@ class ChannelSettings(Document):
     def save(self, *args, **kwargs):
         try:
             self.save_lock.acquire()
-            if hasattr(self, '_changed_fields') and 'sent_messages' in self._changed_fields:
-                before = self._get_collection().find_one(({'_id': self.pk}))
-                newly_sent = filter(lambda item: item.message_id not in before['sent_messages'], self.sent_messages)
-                for message in newly_sent:
-                    message.add_to_image_match(metadata={'chat_id': self.chat.id})
+            try:
+                if hasattr(self, '_changed_fields') and 'sent_messages' in self._changed_fields:
+                    before = self._get_collection().find_one(({'_id': self.pk}))
+                    newly_sent = filter(lambda item: item.message_id not in before['sent_messages'], self.sent_messages)
+                    for message in newly_sent:
+                        message.add_to_image_match(metadata={'chat_id': self.chat.id})
+            except (ConnectionError, NewConnectionError, NotFoundError):
+                pass
+
             super().save(*args, **kwargs)
         finally:
             self.save_lock.release()

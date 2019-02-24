@@ -865,7 +865,7 @@ class ChannelManager(BaseCommand):
 
     @run_async
     def remove_from_queue_callback_query(self, button: Button):
-        message = TgMessage.objects(message_id=button.data['message_id']).first()
+        message = TgMessage.objects(message_id=button.data['message_id'], chat=self.tg_chat).first()
         if message:
             reply = ''
             if message in self.tg_current_channel.added_messages:
@@ -881,7 +881,7 @@ class ChannelManager(BaseCommand):
 
     def reaction_button_callback_query(self):
         reaction = self.update.callback_query.data.replace('reaction_button:', '')
-        message = TgMessage.objects(message_id=self.message.message_id).first()
+        message = TgMessage.objects(message_id=self.message.message_id, chat=self.tg_chat).first()
 
         if not message or reaction not in message.reactions:
             self.update.callback_query.answer('Something went wrong.')

@@ -28,5 +28,7 @@ setup(name='XenianChannelBot',
 
       entry_points={
           'console_scripts': [
-              'bot = xenian_channel.bot.bot:main']
+              'bot = xenian_channel.bot.bot:main',
+              'migrate = xenian_channel.bot.migrations.migrator:migrate',
+          ]
       })
