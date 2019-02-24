@@ -1,7 +1,7 @@
 Changelog
 =========
 
-0.3.4 (unreleased)
+0.4.0 (2019-02-25)
 ------------------
 
 - Put username and link of bot into start message
