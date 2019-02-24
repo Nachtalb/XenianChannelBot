@@ -4,7 +4,7 @@ Changelog
 0.4.1 (unreleased)
 ------------------
 
-- Nothing changed yet.
+- Fix errors in migration
 
 
 0.4.0 (2019-02-25)

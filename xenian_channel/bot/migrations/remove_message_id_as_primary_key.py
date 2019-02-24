@@ -90,6 +90,13 @@ class Migrator:
             queue_msgs = channel.get('queued_messages', {})
             imp_queue_msgs = channel.get('import_messages_queue', {})
 
+            if isinstance(queue_msgs, list):
+                queue_msgs = {}
+                channel['queued_messages'] = {}
+            if isinstance(imp_queue_msgs, list):
+                imp_queue_msgs = {}
+                channel['import_messages_queue'] = {}
+
             for key, messages in queue_msgs.items():
                 channel['queued_messages'][key] = list(map(lambda id_: replace_id(channel, id_), messages))
 
@@ -107,9 +114,9 @@ class Migrator:
 
             for key, messages in channel.get('queued_messages', {}).items():
                 channel['queued_messages'][key] = list(
-                    filter(self.old_id_filter, channel[channel['queued_messages'][key]]))
+                    filter(self.old_id_filter, channel['queued_messages'][key]))
 
-            for key, messages in channel.get('import_messages_queue', {}):
+            for key, messages in channel.get('import_messages_queue', {}).items():
                 channel['import_messages_queue'][key] = list(
                     filter(self.old_id_filter, channel['import_messages_queue'][key]))
 
