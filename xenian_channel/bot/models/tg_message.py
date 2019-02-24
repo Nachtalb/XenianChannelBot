@@ -1,7 +1,7 @@
 from typing import Generator
 
 from mongoengine import BooleanField, DictField, LongField, ReferenceField
-from telegram import Bot, Message
+from telegram import Bot, File, Message
 
 from xenian_channel.bot import image_match_ses
 from xenian_channel.bot.models.telegram import TelegramDocument
@@ -28,7 +28,7 @@ class TgMessage(TelegramDocument):
     class Meta:
         original = Message
 
-    message_id = LongField(primary_key=True)
+    message_id = LongField()
 
     chat = ReferenceField(TgChat)
     from_user = ReferenceField(TgUser)
@@ -39,8 +39,18 @@ class TgMessage(TelegramDocument):
 
     is_current_message = BooleanField(default=False)
 
+    def __new__(cls, *args, **kwargs):
+        first_arg = next(iter(args), None)
+        if first_arg is not None and isinstance(first_arg, Message):
+            chat = TgChat.objects(id=first_arg.chat.id).first()
+            obj = cls.objects(message_id=first_arg.message_id, chat=chat).first()
+            if obj:
+                obj.self_from_object(first_arg)
+                return obj
+        return super().__new__(cls)
+
     def __repr__(self):
-        return f'{super().__repr__()} - {self.message_id}'
+        return f'{super().__repr__()} - {self.message_id}:{self.chat.id}'
 
     @property
     def file_ids(self) -> Generator[int, None, None]:
