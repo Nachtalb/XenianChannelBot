@@ -397,6 +397,9 @@ class ChannelManager(BaseCommand):
                              parse_mode=ParseMode.MARKDOWN)
             return
 
+        del channel.scheduled_messages[time_str]
+        channel.save()
+
         for message in messages:
             method, include_kwargs, reaction_dict = self.prepare_send_message(message, is_preview=False, bot=bot,
                                                                               channel_settings=channel)
