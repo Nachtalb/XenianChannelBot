@@ -1,7 +1,7 @@
 Changelog
 =========
 
-0.4.2 (unreleased)
+0.5.0 (2019-02-25)
 ------------------
 
 - Implement custom scheduling
