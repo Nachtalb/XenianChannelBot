@@ -443,7 +443,11 @@ class ChannelManager(BaseCommand):
                                      text=f'One of the scheduled (`{time}`) messages for {channel_link} could not be sent',
                                      parse_mode=ParseMode.MARKDOWN)
                     return
-        bot.send_message(chat_id=channel.user.id, text=f'Messages scheduled for {channel_link} at `{time}` were sent.',
+
+        left = len(ChannelSettings.objects(id=channel.id).first().scheduled_messages)
+        bot.send_message(chat_id=channel.user.id,
+                         text=f'Batch scheduled for {channel_link} at `{time}` is complete.\n'
+                         f'There are `{left}` scheduled batches left.',
                          parse_mode=ParseMode.MARKDOWN)
 
     def str_to_utc_datetime(self, time_string) -> datetime:

@@ -5,6 +5,7 @@ Changelog
 ------------------
 
 - Implement custom scheduling
+- Improved batch complete message
 
 
 0.4.1 (2019-02-25)
