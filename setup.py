@@ -24,6 +24,9 @@ setup(name='XenianChannelBot',
           'mongoengine',
           'python-telegram-bot',
           'image_match',
+          'pytimeparse',
+          'parsedatetime',
+          'pytz',
       ],
 
       entry_points={
