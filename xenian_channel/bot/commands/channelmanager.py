@@ -7,6 +7,9 @@ from typing import Callable, Dict, Iterable, List, Tuple
 from uuid import uuid4
 
 import emoji
+import parsedatetime
+import pytimeparse
+from pytz import timezone
 from telegram import Bot, Chat, InlineKeyboardButton, InlineKeyboardMarkup, Message, Update, User
 from telegram.error import BadRequest, TimedOut
 from telegram.ext import CallbackQueryHandler, Job, MessageHandler, run_async
@@ -121,7 +124,7 @@ class ChannelManager(BaseCommand):
         self.load_scheduled()
 
     @property
-    def tg_current_channel(self):
+    def tg_current_channel(self) -> ChannelSettings:
         return self.tg_state.current_channel
 
     @tg_current_channel.setter
@@ -440,8 +443,22 @@ class ChannelManager(BaseCommand):
                                      text=f'One of the scheduled (`{time}`) messages for {channel_link} could not be sent',
                                      parse_mode=ParseMode.MARKDOWN)
                     return
-        bot.send_message(chat_id=channel.user.id, text=f'Messages scheduled for {channel_link} at `{time}` were sent.',
+
+        left = len(ChannelSettings.objects(id=channel.id).first().scheduled_messages)
+        bot.send_message(chat_id=channel.user.id,
+                         text=f'Batch scheduled for {channel_link} at `{time}` is complete.\n'
+                         f'There are `{left}` scheduled batches left.',
                          parse_mode=ParseMode.MARKDOWN)
+
+    def str_to_utc_datetime(self, time_string) -> datetime:
+        cal = parsedatetime.Calendar()
+        datetime_obj, _ = cal.parseDT(datetimeString=time_string)
+        return datetime_obj
+
+    def utc_delta(self, start: datetime, end: datetime) -> timedelta:
+        start = start.replace(tzinfo=timezone('UTC'))
+        end = end.replace(tzinfo=timezone('UTC'))
+        return end - start
 
     # # # # # # # # # # # # # # # # # # #
     # END Helper                        #
@@ -521,6 +538,12 @@ class ChannelManager(BaseCommand):
             self.queue_message_message_handler()
         elif self.tg_state.state == self.tg_state.IMPORT_MESSAGES:
             self.add_message_to_import_queue_message_handler()
+        elif self.tg_state.state == self.tg_state.SCHEDULE_ADDED_MESSAGES_WHEN and self.message.text:
+            self.schedule_delay_menu(time_str=self.message.text)
+        elif self.tg_state.state == self.tg_state.SCHEDULE_ADDED_MESSAGES_DELAY and self.message.text:
+            self.schedule_batch_size_menu(delay_str=self.message.text)
+        elif self.tg_state.state == self.tg_state.SCHEDULE_ADDED_MESSAGES_BATCH and self.message.text:
+            self.schedule_confirmation_menu(amount=self.message.text)
 
     def add_channel_post_message_handler(self):
         channel = ChannelSettings.objects(chat=self.tg_message.chat).first()
@@ -764,8 +787,7 @@ class ChannelManager(BaseCommand):
             [
                 self.create_button('Send', callback=self.send_post_callback_query, confirmation_requred=True,
                                    abort_callback=self.create_post_menu),
-                self.create_button('Schedule 10/h', callback=self.schedule_callback_query, confirmation_requred=True,
-                                   abort_callback=self.create_post_menu)
+                self.create_button('Schedule', callback=self.schedule_when_menu)
             ],
             [
                 self.create_button('Back', callback=self.channel_actions_menu)
@@ -778,6 +800,176 @@ class ChannelManager(BaseCommand):
             text=f'Channel: {chat_name}\nSend me messages to be sent to the channel\n'
             f'Currently `{added_amount}` are added.',
             reply_markup=self.convert_buttons(buttons), create=recreate_message, parse_mode=ParseMode.MARKDOWN)
+
+    @run_async
+    def schedule_when_menu(self, **kwargs):
+        self.tg_state.state = self.tg_state.SCHEDULE_ADDED_MESSAGES_WHEN
+
+        buttons = [
+            [
+                self.create_button('Now', callback=self.schedule_delay_menu, data={'time': 'now'}),
+            ],
+            [
+                self.create_button('Morning [06:00]', callback=self.schedule_delay_menu, data={'time': 'morning'}),
+                self.create_button('Noon [12:00]', callback=self.schedule_delay_menu, data={'time': 'noon'}),
+            ],
+            [
+                self.create_button('Evening [18:00]', callback=self.schedule_delay_menu, data={'time': 'evening'}),
+                self.create_button('Midnight [24:00]', callback=self.schedule_delay_menu, data={'time': 'midnight'}),
+            ],
+            [
+                self.create_button('Back', callback=self.create_post_menu),
+            ]
+        ]
+
+        chat_name = self.get_username_or_link(self.tg_current_channel, is_markdown=True)
+        added_amount = len(self.tg_current_channel.added_messages)
+        self.create_or_update_button_message(
+            text=emoji.emojize(f'Channel: {chat_name} with `{added_amount}` posts in queue\nWhen do you want to start '
+                               f'sending messages? Either hit a button or send me a date / time.\n\n'
+                               f':ten_o’clock: Time is in UTC :ten_o’clock:'),
+            reply_markup=self.convert_buttons(buttons), create=False, parse_mode=ParseMode.MARKDOWN)
+
+    @run_async
+    def schedule_delay_menu(self, button: Button = None, time_str: str = None, as_before: bool = False, **kwargs):
+        self.tg_state.state = self.tg_state.SCHEDULE_ADDED_MESSAGES_DELAY
+        as_before = as_before or button.data.get('as_before') if button else False
+
+        recreate = bool(time_str)
+        if not as_before:
+            time_str = (button.data.get('time') if button is not None else time_str) or time_str
+            start_time = self.str_to_utc_datetime(time_str)
+            delta = self.utc_delta(start_time, datetime.now())
+            if delta.total_seconds() < 0 or delta.total_seconds() > 10:
+                start_time = start_time + timedelta(days=1)
+
+            self.tg_state.state_data[self.tg_state.SCHEDULE_ADDED_MESSAGES_WHEN] = time_str
+            self.tg_state.save()
+        else:
+            start_time = self.str_to_utc_datetime(self.tg_state.state_data[self.tg_state.SCHEDULE_ADDED_MESSAGES_WHEN])
+
+        buttons = [
+            [
+                self.create_button('1h', callback=self.schedule_batch_size_menu, data={'delay': '1h'}),
+                self.create_button('3h', callback=self.schedule_batch_size_menu, data={'delay': '3h'}),
+                self.create_button('6h', callback=self.schedule_batch_size_menu, data={'delay': '6h'}),
+            ],
+            [
+                self.create_button('5min', callback=self.schedule_batch_size_menu, data={'delay': '5min'}),
+                self.create_button('10min', callback=self.schedule_batch_size_menu, data={'delay': '10min'}),
+                self.create_button('15min', callback=self.schedule_batch_size_menu, data={'delay': '15min'}),
+            ],
+            [
+                self.create_button('Cancel', callback=self.create_post_menu),
+                self.create_button('Back', callback=self.schedule_when_menu),
+            ]
+        ]
+
+        last_time = self.tg_state.state_data.get(self.tg_state.SCHEDULE_ADDED_MESSAGES_DELAY)
+        if last_time:
+            buttons = [[
+                self.create_button(f'As last time [{last_time}]', self.schedule_batch_size_menu,
+                                   data={'delay': last_time})
+            ]] + buttons
+
+        chat_name = self.get_username_or_link(self.tg_current_channel, is_markdown=True)
+        added_amount = len(self.tg_current_channel.added_messages)
+        self.create_or_update_button_message(
+            text=f'Channel: {chat_name} with `{added_amount}` posts in queue\n- Starttime: `{start_time}`\n\n'
+            f'How big should the delay be between each batch? Again hit a button or tell me via text.',
+            reply_markup=self.convert_buttons(buttons), create=recreate, parse_mode=ParseMode.MARKDOWN)
+
+    @run_async
+    def schedule_batch_size_menu(self, button: Button = None, delay_str: str = None, as_before: bool = False, **kwargs):
+        self.tg_state.state = self.tg_state.SCHEDULE_ADDED_MESSAGES_BATCH
+        as_before = as_before or button.data.get('as_before') if button else False
+
+        recreate = bool(delay_str)
+        if not as_before:
+            delay_str = (button.data.get('delay') if button is not None else delay_str) or delay_str
+
+            try:
+                time_delta_str = str(timedelta(seconds=pytimeparse.parse(delay_str)))
+            except TypeError:
+                self.message.reply_text('The given text could not be evaluated as a time delta')
+                self.schedule_delay_menu(as_before=True)
+                return
+
+            self.tg_state.state_data[self.tg_state.SCHEDULE_ADDED_MESSAGES_DELAY] = delay_str
+            self.tg_state.save()
+        else:
+            time_delta_str = str(timedelta(
+                seconds=pytimeparse.parse(self.tg_state.state_data[self.tg_state.SCHEDULE_ADDED_MESSAGES_DELAY])))
+
+        start_time = self.str_to_utc_datetime(self.tg_state.state_data[self.tg_state.SCHEDULE_ADDED_MESSAGES_WHEN])
+
+        buttons = [
+            [
+                self.create_button('1 msg', callback=self.schedule_confirmation_menu, data={'amount': '1'}),
+                self.create_button('5 msg', callback=self.schedule_confirmation_menu, data={'amount': '5'}),
+                self.create_button('10 msg', callback=self.schedule_confirmation_menu, data={'amount': '10'}),
+                self.create_button('20 msg', callback=self.schedule_confirmation_menu, data={'amount': '20'}),
+            ],
+            [
+                self.create_button('Cancel', callback=self.create_post_menu),
+                self.create_button('Back', callback=self.schedule_delay_menu, data={'as_before': True}),
+            ]
+        ]
+
+        last_time = self.tg_state.state_data.get(self.tg_state.SCHEDULE_ADDED_MESSAGES_BATCH)
+        if last_time:
+            buttons = [[
+                self.create_button(f'As last time [{last_time}]', self.schedule_confirmation_menu,
+                                   data={'amount': last_time})
+            ]] + buttons
+
+        chat_name = self.get_username_or_link(self.tg_current_channel, is_markdown=True)
+        added_amount = len(self.tg_current_channel.added_messages)
+        self.create_or_update_button_message(
+            text=f'Channel: {chat_name} with `{added_amount}` posts in queue\n- Starttime: `{start_time}`\n'
+            f'- Delay: `{time_delta_str}`\n\nHow many should be sent per batch? Click on a button or tell me via text',
+            reply_markup=self.convert_buttons(buttons),
+            create=recreate, parse_mode=ParseMode.MARKDOWN)
+
+    @run_async
+    def schedule_confirmation_menu(self, button: Button = None, amount: str = None, **kwargs):
+        self.tg_state.state = self.tg_state.SCHEDULE_ADDED_MESSAGES_CONFIRMATION
+        recreate = bool(amount)
+
+        amount = (button.data.get('amount') if button is not None else amount) or amount
+
+        try:
+            amount = re.sub('\D', '', amount)
+            int(amount)
+        except ValueError:
+            self.message.reply_text('The given text could not be evaluated as a number.')
+            self.schedule_batch_size_menu(as_before=True)
+            return
+
+        self.tg_state.state_data[self.tg_state.SCHEDULE_ADDED_MESSAGES_BATCH] = amount
+        self.tg_state.save()
+
+        time_delta_str = str(
+            timedelta(seconds=pytimeparse.parse(self.tg_state.state_data[self.tg_state.SCHEDULE_ADDED_MESSAGES_DELAY])))
+        start_time = self.str_to_utc_datetime(self.tg_state.state_data[self.tg_state.SCHEDULE_ADDED_MESSAGES_WHEN])
+
+        buttons = [
+            [
+                self.create_button('Yes', callback=self.schedule_callback_query),
+            ],
+            [
+                self.create_button('Cancel', callback=self.create_post_menu),
+                self.create_button('Back', callback=self.schedule_batch_size_menu, data={'as_before': True}),
+            ]
+        ]
+
+        chat_name = self.get_username_or_link(self.tg_current_channel, is_markdown=True)
+        added_amount = len(self.tg_current_channel.added_messages)
+        self.create_or_update_button_message(
+            text=f'Channel: {chat_name} posts in queue {added_amount}\n- Starttime: `{start_time}`\n'
+            f'- Delay: `{time_delta_str}`\n- Batch size: `{amount}`\n\nAre those options ok?',
+            reply_markup=self.convert_buttons(buttons),
+            create=recreate, parse_mode=ParseMode.MARKDOWN)
 
     @run_async
     def settings_menu(self, **kwargs):
@@ -793,7 +985,8 @@ class ChannelManager(BaseCommand):
                                    abort_callback=self.settings_menu),
             ],
             [
-                self.create_button('Back', callback=self.channel_actions_menu)
+                self.create_button('Cancel', callback=self.create_post_menu),
+                self.create_button('Back', callback=self.channel_actions_menu),
             ]
         ]
         chat_name = self.get_username_or_link(self.tg_current_channel)
@@ -867,12 +1060,16 @@ class ChannelManager(BaseCommand):
 
     @run_async
     def schedule_callback_query(self, **kwargs):
+        when = self.tg_state.state_data.get(self.tg_state.SCHEDULE_ADDED_MESSAGES_WHEN)
+        delay = self.tg_state.state_data.get(self.tg_state.SCHEDULE_ADDED_MESSAGES_DELAY)
+        batch_size = self.tg_state.state_data.get(self.tg_state.SCHEDULE_ADDED_MESSAGES_BATCH)
+
+        when = self.str_to_utc_datetime(when) or datetime.now()
+        delay = timedelta(seconds=pytimeparse.parse(delay)) or timedelta(hours=1)
+        batch_size = int(batch_size) if batch_size is not None and batch_size.isdigit() else 10
+
         messages = self.tg_current_channel.added_messages[:]
         self.tg_current_channel.added_messages = []
-
-        timedelta_now = timedelta(seconds=1)
-        timedelta_hourly = timedelta(hours=1)
-        time_now = datetime.now() + timedelta_now
 
         temp_list = []
         times = {}
@@ -880,8 +1077,8 @@ class ChannelManager(BaseCommand):
         for index, message in enumerate(messages):
             temp_list.append(message)
 
-            if (index + 1) % 10 == 0:
-                time = time_now + (timedelta_hourly * hours_counter)
+            if (index + 1) % batch_size == 0:
+                time = when + (delay * hours_counter)
                 time_str = str(int(time.timestamp()))
                 times[time_str] = temp_list[:]
                 self.tg_current_channel.scheduled_messages[time_str] = times[time_str]
@@ -889,7 +1086,7 @@ class ChannelManager(BaseCommand):
                 temp_list = []
 
         if temp_list:
-            time = time_now + (timedelta_hourly * hours_counter)
+            time = when + (delay * hours_counter)
             time_str = str(int(time.timestamp()))
             times[time_str] = temp_list[:]
             self.tg_current_channel.scheduled_messages[time_str] = times[time_str]

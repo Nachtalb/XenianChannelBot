@@ -4,7 +4,8 @@ Changelog
 0.4.2 (unreleased)
 ------------------
 
-- Nothing changed yet.
+- Implement custom scheduling
+- Improved batch complete message
 
 
 0.4.1 (2019-02-25)
