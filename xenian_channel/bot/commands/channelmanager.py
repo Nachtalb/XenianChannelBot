@@ -722,7 +722,7 @@ class ChannelManager(BaseCommand):
 
         buttons = [
             [
-                self.create_button('Create Port', callback=self.create_post_menu)
+                self.create_button('Create Post', callback=self.create_post_menu)
             ],
             [
                 self.create_button('Remove', callback=self.remove_channel_from_callback_query,
