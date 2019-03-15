@@ -1,6 +1,6 @@
 from threading import Lock
 
-from mongoengine import Document, NULLIFY, ReferenceField, StringField, DictField
+from mongoengine import Document, NULLIFY, ReferenceField, StringField, DictField, BooleanField
 
 from xenian_channel.bot.models import ChannelSettings
 from xenian_channel.bot.models.tg_user import TgUser
@@ -18,6 +18,7 @@ class UserState(Document):
     CHANGE_DEFAULT_CAPTION = 'change default caption'
     CHANGE_DEFAULT_REACTION = 'change default reaction'
     CREATE_SINGLE_POST = 'create single post'
+    SCHEDULE_ACTIONS = 'schedule actions'
     SCHEDULE_ADDED_MESSAGES_WHEN = 'schedule added messages when'
     SCHEDULE_ADDED_MESSAGES_DELAY = 'schedule added messages delay'
     SCHEDULE_ADDED_MESSAGES_BATCH = 'schedule added messages batch'
@@ -29,6 +30,7 @@ class UserState(Document):
 
     current_channel = ReferenceField(ChannelSettings, reverse_delete_rule=NULLIFY)
     state_data = DictField(default={})
+    change_schedule = BooleanField(default=False)
 
     save_lock = Lock()
 
