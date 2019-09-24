@@ -305,6 +305,8 @@ class ChannelManager(BaseCommand):
                 self.create_button('Delete', callback=self.remove_from_queue_callback_query,
                                    data={'message_id': message.message_id})
             ]])
+        else:
+            keywords['isgroup'] = True
 
         reaction_dict = dict((reaction, []) for reaction in message.reactions or channel_settings.reactions)
         buttons.extend(self.get_reactions_tg_buttons(reactions=reaction_dict, with_callback=not is_preview))
@@ -1186,7 +1188,7 @@ class ChannelManager(BaseCommand):
             try:
                 method, include_kwargs, reaction_dict = self.prepare_send_message(stored_message, is_preview=preview)
 
-                new_message = method(chat_id=send_to.id, **include_kwargs, isgroup=not preview)
+                new_message = method(chat_id=send_to.id, **include_kwargs)
                 if not preview:
                     new_tg_message = TgMessage(new_message, reactions=reaction_dict)
                     new_tg_message.save()
