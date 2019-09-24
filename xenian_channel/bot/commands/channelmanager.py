@@ -872,9 +872,6 @@ class ChannelManager(BaseCommand):
         if not as_before:
             time_str = (button.data.get('time') if button is not None else time_str) or time_str
             start_time = self.str_to_utc_datetime(time_str)
-            delta = self.utc_delta(start_time, datetime.now())
-            if delta.total_seconds() < 0 or delta.total_seconds() > 10:
-                start_time = start_time + timedelta(days=1)
 
             self.tg_state.state_data[self.tg_state.SCHEDULE_ADDED_MESSAGES_WHEN] = time_str
             self.tg_state.save()
