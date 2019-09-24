@@ -111,7 +111,7 @@ class TgMessage(TelegramDocument):
             if result['dist'] == 0.0:
                 return result
 
-    def add_to_image_match(self, bot: Bot = None, metadata: dict = None) -> dict or None:
+    def add_to_image_match(self, bot: Bot = None, metadata: dict = None):
         file = self._get_file_for_image_search(bot)
         if not file:
             return
@@ -119,4 +119,3 @@ class TgMessage(TelegramDocument):
             image_match_ses.add_image(file.file_path, metadata=metadata)
         except (ConnectionError, NewConnectionError, NotFoundError):
             return
-        return self.get_self_image_match()

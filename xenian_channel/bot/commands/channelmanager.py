@@ -722,7 +722,7 @@ class ChannelManager(BaseCommand):
 
         buttons = [
             [
-                self.create_button('Create Port', callback=self.create_post_menu)
+                self.create_button('Create Post', callback=self.create_post_menu)
             ],
             [
                 self.create_button('Remove', callback=self.remove_channel_from_callback_query,
@@ -730,15 +730,36 @@ class ChannelManager(BaseCommand):
                 self.create_button('Settings', callback=self.settings_menu),
             ],
             [
-                self.create_button('Import messages', callback=self.import_messages_menu)
+                self.create_button('Import messages', callback=self.import_messages_menu),
+                self.create_button('Schedule', callback=self.schedule_menu),
             ],
+            [
+                self.create_button('Back', callback=self.list_channels_menu)
+            ]
+        ]
+
+        total_scheduled = len(self.tg_current_channel.scheduled_messages)
+        chat_name = self.get_username_or_link(self.tg_current_channel)
+        self.create_or_update_button_message(text=f'Channel: {chat_name}\nWhat do you want to do?\n'
+                                                  f'{total_scheduled} Messages scheduled',
+                                             reply_markup=self.convert_buttons(buttons),
+                                             create=recreate_message)
+
+    @run_async
+    def schedule_menu(self, button: Button = None, recreate_message=False):
+        self.tg_state.state = self.tg_state.SCHEDULE_ACTIONS
+
+        buttons = [
             [
                 self.create_button('Scheduled', callback=self.send_scheduled_callback_query),
                 self.create_button('Clear scheduled', callback=self.clear_scheduled_callback_query,
                                    confirmation_requred=True, abort_callback=self.channel_actions_menu)
             ],
             [
-                self.create_button('Back', callback=self.list_channels_menu)
+                self.create_button('Change schedule', callback=self.schedule_when_menu, data={'change_schedule': True}),
+            ],
+            [
+                self.create_button('Back', callback=self.channel_actions_menu)
             ]
         ]
 
@@ -746,7 +767,6 @@ class ChannelManager(BaseCommand):
         self.create_or_update_button_message(text=f'Channel: {chat_name}\nWhat do you want to do?',
                                              reply_markup=self.convert_buttons(buttons),
                                              create=recreate_message)
-
     @run_async
     def import_messages_menu(self, **kwargs):
         self.tg_state.state = self.tg_state.IMPORT_MESSAGES
@@ -777,6 +797,7 @@ class ChannelManager(BaseCommand):
     @run_async
     def create_post_menu(self, recreate_message: bool = False, **kwargs):
         self.tg_state.state = self.tg_state.CREATE_SINGLE_POST
+        self.tg_state.change_schedule = False
 
         buttons = [
             [
@@ -802,7 +823,11 @@ class ChannelManager(BaseCommand):
             reply_markup=self.convert_buttons(buttons), create=recreate_message, parse_mode=ParseMode.MARKDOWN)
 
     @run_async
-    def schedule_when_menu(self, **kwargs):
+    def schedule_when_menu(self, button: Button=None, **kwargs):
+        data = button.data if button else {}
+        self.tg_state.change_schedule = data.get('change_schedule', False)
+        self.tg_state.save()
+
         self.tg_state.state = self.tg_state.SCHEDULE_ADDED_MESSAGES_WHEN
 
         buttons = [
@@ -818,7 +843,7 @@ class ChannelManager(BaseCommand):
                 self.create_button('Midnight [24:00]', callback=self.schedule_delay_menu, data={'time': 'midnight'}),
             ],
             [
-                self.create_button('Back', callback=self.create_post_menu),
+                self.create_button('Back', callback=self.create_post_menu if not self.tg_state.change_schedule else self.schedule_menu),
             ]
         ]
 
@@ -860,7 +885,7 @@ class ChannelManager(BaseCommand):
                 self.create_button('15min', callback=self.schedule_batch_size_menu, data={'delay': '15min'}),
             ],
             [
-                self.create_button('Cancel', callback=self.create_post_menu),
+                self.create_button('Cancel', callback=self.create_post_menu if not self.tg_state.change_schedule else self.schedule_menu),
                 self.create_button('Back', callback=self.schedule_when_menu),
             ]
         ]
@@ -873,7 +898,7 @@ class ChannelManager(BaseCommand):
             ]] + buttons
 
         chat_name = self.get_username_or_link(self.tg_current_channel, is_markdown=True)
-        added_amount = len(self.tg_current_channel.added_messages)
+        added_amount = len(self.tg_current_channel.added_messages if not self.tg_state.change_schedule else self.tg_current_channel.scheduled_messages)
         self.create_or_update_button_message(
             text=f'Channel: {chat_name} with `{added_amount}` posts in queue\n- Starttime: `{start_time}`\n\n'
             f'How big should the delay be between each batch? Again hit a button or tell me via text.',
@@ -911,7 +936,7 @@ class ChannelManager(BaseCommand):
                 self.create_button('20 msg', callback=self.schedule_confirmation_menu, data={'amount': '20'}),
             ],
             [
-                self.create_button('Cancel', callback=self.create_post_menu),
+                self.create_button('Cancel', callback=self.create_post_menu if not self.tg_state.change_schedule else self.schedule_menu),
                 self.create_button('Back', callback=self.schedule_delay_menu, data={'as_before': True}),
             ]
         ]
@@ -924,7 +949,7 @@ class ChannelManager(BaseCommand):
             ]] + buttons
 
         chat_name = self.get_username_or_link(self.tg_current_channel, is_markdown=True)
-        added_amount = len(self.tg_current_channel.added_messages)
+        added_amount = len(self.tg_current_channel.added_messages if not self.tg_state.change_schedule else self.tg_current_channel.scheduled_messages)
         self.create_or_update_button_message(
             text=f'Channel: {chat_name} with `{added_amount}` posts in queue\n- Starttime: `{start_time}`\n'
             f'- Delay: `{time_delta_str}`\n\nHow many should be sent per batch? Click on a button or tell me via text',
@@ -958,13 +983,13 @@ class ChannelManager(BaseCommand):
                 self.create_button('Yes', callback=self.schedule_callback_query),
             ],
             [
-                self.create_button('Cancel', callback=self.create_post_menu),
+                self.create_button('Cancel', callback=self.create_post_menu if not self.tg_state.change_schedule else self.schedule_menu),
                 self.create_button('Back', callback=self.schedule_batch_size_menu, data={'as_before': True}),
             ]
         ]
 
         chat_name = self.get_username_or_link(self.tg_current_channel, is_markdown=True)
-        added_amount = len(self.tg_current_channel.added_messages)
+        added_amount = len(self.tg_current_channel.added_messages if not self.tg_state.change_schedule else self.tg_current_channel.scheduled_messages)
         self.create_or_update_button_message(
             text=f'Channel: {chat_name} posts in queue {added_amount}\n- Starttime: `{start_time}`\n'
             f'- Delay: `{time_delta_str}`\n- Batch size: `{amount}`\n\nAre those options ok?',
@@ -1049,14 +1074,14 @@ class ChannelManager(BaseCommand):
                 '\n'.join(map(lambda item: f'`{datetime.fromtimestamp(int(item[0]))}:` {len(item[1])} messages',
                               messages.items()))
             ), parse_mode=ParseMode.MARKDOWN)
-        self.channel_actions_menu(recreate_message=True)
+        self.schedule_menu(recreate_message=True)
 
     @run_async
     def clear_scheduled_callback_query(self, **kwargs):
         self.tg_current_channel.scheduled_messages = {}
         self.tg_current_channel.save()
         self.message.reply_text('Schedule was cleared')
-        self.channel_actions_menu(recreate_message=True)
+        self.schedule_menu(recreate_message=True)
 
     @run_async
     def schedule_callback_query(self, **kwargs):
@@ -1068,8 +1093,13 @@ class ChannelManager(BaseCommand):
         delay = timedelta(seconds=pytimeparse.parse(delay)) or timedelta(hours=1)
         batch_size = int(batch_size) if batch_size is not None and batch_size.isdigit() else 10
 
-        messages = self.tg_current_channel.added_messages[:]
-        self.tg_current_channel.added_messages = []
+        if self.tg_state.change_schedule:
+            messages_list = self.tg_current_channel.scheduled_messages.values()
+            messages = list(chain.from_iterable(messages_list))
+            self.tg_current_channel.scheduled_messages = {}
+        else:
+            messages = self.tg_current_channel.added_messages[:]
+            self.tg_current_channel.added_messages = []
 
         temp_list = []
         times = {}
@@ -1098,7 +1128,10 @@ class ChannelManager(BaseCommand):
             '\n'.join(map(lambda item: f'`{datetime.fromtimestamp(int(item[0]))}:` {len(item[1])} messages',
                           times.items()))
         ), parse_mode=ParseMode.MARKDOWN)
-        self.create_post_menu(recreate_message=True)
+        if self.tg_state.change_schedule:
+            self.channel_actions_menu(recreate_message=True)
+        else:
+            self.create_post_menu(recreate_message=True)
 
     # Post section
     @run_async
