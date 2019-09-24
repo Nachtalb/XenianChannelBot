@@ -67,13 +67,8 @@ class ChannelSettings(Document):
                 before = self._get_collection().find_one(({'_id': self.pk}))
                 newly_sent = filter(lambda item: item.message_id not in before['sent_messages'], self.sent_messages)
                 self.add_messages_to_elasitcsearch(newly_sent)
-        except Exception as e:
-            from xenian_channel.bot import job_queue
-            self._logger.warning(e)
-            try:
-                job_queue.run_once(self.add_messages_to_elasitcsearch, context=newly_sent, when=timedelta(minutes=5))
-            except NameError:
-                self._logger.warning('Could not add messages to elastic search')
+        except Exception:
+            self._logger.warning('Could not add messages to elastic search')
 
     def save(self, *args, **kwargs):
         with self.save_contextmanager():
