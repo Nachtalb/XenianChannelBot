@@ -829,6 +829,11 @@ class ChannelManager(BaseCommand):
         self.tg_state.change_schedule = data.get('change_schedule', False)
         self.tg_state.save()
 
+        if not self.tg_state.change_schedule and not self.tg_current_channel.added_messages:
+            self.update.callback_query.answer('You have to add messages first')
+            self.create_post_menu()
+            return
+
         self.tg_state.state = self.tg_state.SCHEDULE_ADDED_MESSAGES_WHEN
 
         buttons = [
