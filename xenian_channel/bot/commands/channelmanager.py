@@ -1,4 +1,5 @@
 import logging
+import random
 import re
 from collections import namedtuple
 from datetime import datetime, timedelta
@@ -983,6 +984,9 @@ class ChannelManager(BaseCommand):
                 self.create_button('Yes', callback=self.schedule_callback_query),
             ],
             [
+                self.create_button('Yes and randomize', callback=self.schedule_callback_query, data={'randomize': True}),
+            ],
+            [
                 self.create_button('Cancel', callback=self.create_post_menu if not self.tg_state.change_schedule else self.schedule_menu),
                 self.create_button('Back', callback=self.schedule_batch_size_menu, data={'as_before': True}),
             ]
@@ -1098,12 +1102,16 @@ class ChannelManager(BaseCommand):
             messages = list(chain.from_iterable(messages_list))
             self.tg_current_channel.scheduled_messages = {}
         else:
-            messages = self.tg_current_channel.added_messages[:]
+            messages = list(self.tg_current_channel.added_messages[:])
             self.tg_current_channel.added_messages = []
 
         temp_list = []
         times = {}
         hours_counter = 0
+
+        if 'button' in kwargs and 'randomize' in kwargs['button'].data:
+            random.shuffle(messages)
+
         for index, message in enumerate(messages):
             temp_list.append(message)
 
