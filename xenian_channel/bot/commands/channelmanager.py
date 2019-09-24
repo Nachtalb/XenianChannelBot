@@ -604,7 +604,7 @@ class ChannelManager(BaseCommand):
         file_ids = self.get_all_file_ids_of_channel(self.tg_current_channel)
         similar_images = self.get_similar_in_channel()
         if [id for id in self.tg_message.file_ids if id in file_ids] \
-                or [entry for entry in similar_images if entry['dist'] == 0.0]:
+                or [entry for entry in similar_images if entry['dist'] <= 0.8]:
             self.message.reply_text('Message was already sent once or is queued.',
                                     reply_message_id=self.message.message_id)
         else:
