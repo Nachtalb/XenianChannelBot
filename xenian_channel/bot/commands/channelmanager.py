@@ -305,6 +305,7 @@ class ChannelManager(BaseCommand):
                 self.create_button('Delete', callback=self.remove_from_queue_callback_query,
                                    data={'message_id': message.message_id})
             ]])
+            keywords['disable_notification'] = True
         else:
             keywords['isgroup'] = True
 
