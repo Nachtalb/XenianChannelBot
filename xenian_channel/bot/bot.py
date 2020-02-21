@@ -55,7 +55,7 @@ def error(bot: Bot, update: Update, error: TelegramError):
 
 def main():
     global job_queue
-    queue = messagequeue.MessageQueue(all_burst_limit=29, all_time_limit_ms=1017)
+    queue = messagequeue.MessageQueue(all_burst_limit=20, all_time_limit_ms=2000)
     request = Request(con_pool_size=8)
     bot = MQBot(TELEGRAM_API_TOKEN, request=request, mqueue=queue)
 

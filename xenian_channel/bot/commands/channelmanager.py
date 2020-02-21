@@ -1,4 +1,5 @@
 import logging
+import random
 import re
 from collections import namedtuple
 from datetime import datetime, timedelta
@@ -304,6 +305,8 @@ class ChannelManager(BaseCommand):
                 self.create_button('Delete', callback=self.remove_from_queue_callback_query,
                                    data={'message_id': message.message_id})
             ]])
+        else:
+            keywords['isgroup'] = True
 
         reaction_dict = dict((reaction, []) for reaction in message.reactions or channel_settings.reactions)
         buttons.extend(self.get_reactions_tg_buttons(reactions=reaction_dict, with_callback=not is_preview))
@@ -387,6 +390,7 @@ class ChannelManager(BaseCommand):
                     'channel': channel,
                     'time': time_str,
                 }
+
                 messages_str = ', '.join(map(lambda msg: str(msg.message_id), posts))
                 print(f'Scheduling {messages_str} items in {channel.chat.id} at {time}')
 
@@ -445,10 +449,17 @@ class ChannelManager(BaseCommand):
                     return
 
         left = len(ChannelSettings.objects(id=channel.id).first().scheduled_messages)
-        bot.send_message(chat_id=channel.user.id,
-                         text=f'Batch scheduled for {channel_link} at `{time}` is complete.\n'
-                         f'There are `{left}` scheduled batches left.',
-                         parse_mode=ParseMode.MARKDOWN)
+        if not left:
+            bot.send_message(chat_id=channel.user.id,
+                             text=emoji.emojize(f':warning: No batches left for {channel_link}\n'
+                                                f'Batch schduled for {channel_link} at `{time}` is complete\n'),
+                             parse_mode=ParseMode.MARKDOWN)
+        else:
+            bot.send_message(chat_id=channel.user.id,
+                             text=f'Batch scheduled for {channel_link} at `{time}` is complete.\n'
+                                  f'There are `{left}` scheduled batches left.',
+                             disable_notification=True,
+                             parse_mode=ParseMode.MARKDOWN)
 
     def str_to_utc_datetime(self, time_string) -> datetime:
         cal = parsedatetime.Calendar()
@@ -598,10 +609,11 @@ class ChannelManager(BaseCommand):
             self.message.reply_text('This type of message is not supported.', reply_message_id=self.message.message_id)
             return
 
-        file_ids = self.get_all_file_ids_of_channel(self.tg_current_channel)
+        file_ids = list(self.get_all_file_ids_of_channel(self.tg_current_channel))
         similar_images = self.get_similar_in_channel()
-        if [id for id in self.tg_message.file_ids if id in file_ids] \
-                or [entry for entry in similar_images if entry['dist'] == 0.0]:
+
+        if ([id for id in self.tg_message.file_ids if id in file_ids]
+             or [entry for entry in similar_images if entry['dist'] <= 0.8]):
             self.message.reply_text('Message was already sent once or is queued.',
                                     reply_message_id=self.message.message_id)
         else:
@@ -628,7 +640,7 @@ class ChannelManager(BaseCommand):
 
         job = job_queue.run_once(
             lambda bot_, _job, **__: self.create_post_menu(recreate_message=True, *args, **kwargs),
-            when=1
+            when=2
         )
         JobsQueue(user_id=self.user.id, job=job, type=JobsQueue.types.SEND_BUTTON_MESSAGE, replaceable=True)
 
@@ -756,7 +768,7 @@ class ChannelManager(BaseCommand):
                                    confirmation_requred=True, abort_callback=self.channel_actions_menu)
             ],
             [
-                self.create_button('Change schedule', callback=self.schedule_when_menu, data={'change_schedule': True}),
+                self.create_button('Reschedule', callback=self.schedule_when_menu, data={'change_schedule': True}),
             ],
             [
                 self.create_button('Back', callback=self.channel_actions_menu)
@@ -798,6 +810,7 @@ class ChannelManager(BaseCommand):
     def create_post_menu(self, recreate_message: bool = False, **kwargs):
         self.tg_state.state = self.tg_state.CREATE_SINGLE_POST
         self.tg_state.change_schedule = False
+        self.tg_state.save()
 
         buttons = [
             [
@@ -825,8 +838,13 @@ class ChannelManager(BaseCommand):
     @run_async
     def schedule_when_menu(self, button: Button=None, **kwargs):
         data = button.data if button else {}
-        self.tg_state.change_schedule = data.get('change_schedule', False)
+        self.tg_state.change_schedule = data.get('change_schedule', self.tg_state.change_schedule)
         self.tg_state.save()
+
+        if not self.tg_state.change_schedule and not self.tg_current_channel.added_messages:
+            self.update.callback_query.answer('You have to add messages first')
+            self.create_post_menu()
+            return
 
         self.tg_state.state = self.tg_state.SCHEDULE_ADDED_MESSAGES_WHEN
 
@@ -841,6 +859,11 @@ class ChannelManager(BaseCommand):
             [
                 self.create_button('Evening [18:00]', callback=self.schedule_delay_menu, data={'time': 'evening'}),
                 self.create_button('Midnight [24:00]', callback=self.schedule_delay_menu, data={'time': 'midnight'}),
+            ],
+            [
+                self.create_button('In 1h', callback=self.schedule_delay_menu, data={'time': 'now+1h'}),
+                self.create_button('In 3h', callback=self.schedule_delay_menu, data={'time': 'now+3h'}),
+                self.create_button('In 6h', callback=self.schedule_delay_menu, data={'time': 'now+6h'}),
             ],
             [
                 self.create_button('Back', callback=self.create_post_menu if not self.tg_state.change_schedule else self.schedule_menu),
@@ -864,9 +887,6 @@ class ChannelManager(BaseCommand):
         if not as_before:
             time_str = (button.data.get('time') if button is not None else time_str) or time_str
             start_time = self.str_to_utc_datetime(time_str)
-            delta = self.utc_delta(start_time, datetime.now())
-            if delta.total_seconds() < 0 or delta.total_seconds() > 10:
-                start_time = start_time + timedelta(days=1)
 
             self.tg_state.state_data[self.tg_state.SCHEDULE_ADDED_MESSAGES_WHEN] = time_str
             self.tg_state.save()
@@ -880,9 +900,9 @@ class ChannelManager(BaseCommand):
                 self.create_button('6h', callback=self.schedule_batch_size_menu, data={'delay': '6h'}),
             ],
             [
-                self.create_button('5min', callback=self.schedule_batch_size_menu, data={'delay': '5min'}),
-                self.create_button('10min', callback=self.schedule_batch_size_menu, data={'delay': '10min'}),
-                self.create_button('15min', callback=self.schedule_batch_size_menu, data={'delay': '15min'}),
+                self.create_button('12h', callback=self.schedule_batch_size_menu, data={'delay': '12h'}),
+                self.create_button('24h', callback=self.schedule_batch_size_menu, data={'delay': '24h'}),
+                self.create_button('30min', callback=self.schedule_batch_size_menu, data={'delay': '30min'}),
             ],
             [
                 self.create_button('Cancel', callback=self.create_post_menu if not self.tg_state.change_schedule else self.schedule_menu),
@@ -981,6 +1001,9 @@ class ChannelManager(BaseCommand):
         buttons = [
             [
                 self.create_button('Yes', callback=self.schedule_callback_query),
+            ],
+            [
+                self.create_button('Yes and randomize', callback=self.schedule_callback_query, data={'randomize': True}),
             ],
             [
                 self.create_button('Cancel', callback=self.create_post_menu if not self.tg_state.change_schedule else self.schedule_menu),
@@ -1097,13 +1120,19 @@ class ChannelManager(BaseCommand):
             messages_list = self.tg_current_channel.scheduled_messages.values()
             messages = list(chain.from_iterable(messages_list))
             self.tg_current_channel.scheduled_messages = {}
+            for job in job_queue.jobs():
+                if job.context.get('channel', None) == self.tg_current_channel:
+                    job.schedule_removal()
         else:
-            messages = self.tg_current_channel.added_messages[:]
-            self.tg_current_channel.added_messages = []
+            messages = list(self.tg_current_channel.added_messages[:])
 
         temp_list = []
         times = {}
         hours_counter = 0
+
+        if 'button' in kwargs and 'randomize' in kwargs['button'].data:
+            random.shuffle(messages)
+
         for index, message in enumerate(messages):
             temp_list.append(message)
 
@@ -1121,17 +1150,27 @@ class ChannelManager(BaseCommand):
             times[time_str] = temp_list[:]
             self.tg_current_channel.scheduled_messages[time_str] = times[time_str]
 
+        self.tg_current_channel.added_messages = []
         self.tg_current_channel.save()
 
         self.load_scheduled(channel=self.tg_current_channel, times=list(times.keys()))
-        self.message.reply_text('Messages were scheduled at:\n{}'.format(
-            '\n'.join(map(lambda item: f'`{datetime.fromtimestamp(int(item[0]))}:` {len(item[1])} messages',
-                          times.items()))
-        ), parse_mode=ParseMode.MARKDOWN)
+        chunks = self.chunks(list(map(lambda item: f'`{datetime.fromtimestamp(int(item[0]))}:` {len(item[1])} messages', times.items())),
+                             100)
+        self.bot.send_message(chat_id=self.tg_user.id,
+                              text='**Messages were scheduled at:**', parse_mode=ParseMode.MARKDOWN)
+        for chunk in chunks:
+            self.bot.send_message(chat_id=self.tg_user.id, text='\n'.join(chunk), parse_mode=ParseMode.MARKDOWN)
+
         if self.tg_state.change_schedule:
             self.channel_actions_menu(recreate_message=True)
+            self.tg_state.change_caption_menu = False
+            self.tg_state.save()
         else:
             self.create_post_menu(recreate_message=True)
+
+    def chunks(self, lischt, n):
+        for i in range(0, len(lischt), n):
+            yield lischt[i:i + n]
 
     # Post section
     @run_async
@@ -1173,7 +1212,7 @@ class ChannelManager(BaseCommand):
             try:
                 method, include_kwargs, reaction_dict = self.prepare_send_message(stored_message, is_preview=preview)
 
-                new_message = method(chat_id=send_to.id, **include_kwargs, isgroup=not preview)
+                new_message = method(chat_id=send_to.id, **include_kwargs)
                 if not preview:
                     new_tg_message = TgMessage(new_message, reactions=reaction_dict)
                     new_tg_message.save()
