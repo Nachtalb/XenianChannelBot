@@ -30,4 +30,6 @@ MONGODB_CONFIGURATION = {
     'host': 'localhost',  # default: localhost
     'port': 27017,  # default: 27017
     'db_name': 'DevXenianChannelBot',
+    'username': '',
+    'password': '',
 }
