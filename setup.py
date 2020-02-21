@@ -1,6 +1,6 @@
 from setuptools import find_packages, setup
 
-version = '0.6.0'
+version = '0.6.1.dev0'
 
 setup(name='XenianChannelBot',
       version=version,
