@@ -1159,8 +1159,10 @@ class ChannelManager(BaseCommand):
         self.load_scheduled(channel=self.tg_current_channel, times=list(times.keys()))
         chunks = self.chunks(list(map(lambda item: f'`{datetime.fromtimestamp(int(item[0]))}:` {len(item[1])} messages', times.items())),
                              100)
+
+        channel_link = self.get_username_or_link(self.tg_current_channel, is_markdown=True)
         self.bot.send_message(chat_id=self.tg_user.id,
-                              text='**Messages were scheduled at:**', parse_mode=ParseMode.MARKDOWN)
+                              text=f'**Messages for {channel_link} were scheduled at:**', parse_mode=ParseMode.MARKDOWN)
         for chunk in chunks:
             self.bot.send_message(chat_id=self.tg_user.id, text='\n'.join(chunk), parse_mode=ParseMode.MARKDOWN)
 

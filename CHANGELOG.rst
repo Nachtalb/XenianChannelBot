@@ -15,6 +15,7 @@ Changelog
 - Improve duplicate image recognition
 - Prevent scheduling when no messages are in the queue
 - Various improvements in the code itself (speed, reliability, debugging etc.)
+- Tell which for which channel messages were scheduled
 
 
 0.5.0 (2019-02-25)
