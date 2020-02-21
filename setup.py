@@ -18,6 +18,7 @@ setup(name='XenianChannelBot',
 
       install_requires=[
           'emoji',
+          'numpy',
           'htmlmin',
           'mako',
           'mr.developer',
