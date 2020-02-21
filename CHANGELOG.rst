@@ -4,7 +4,17 @@ Changelog
 0.5.1 (unreleased)
 ------------------
 
-- Nothing changed yet.
+- Fix rescheduling
+- Add more options to scheduling
+- Increased delay to next create post menu after sending new post to decrease spam
+- Inform when last batch was sent
+- Do not notify about added posts when you add posts
+- Fix preview
+- Add option to send posts in random order
+- Fix message "Messages scheduled at" too big by splitting it up
+- Improve duplicate image recognition
+- Prevent scheduling when no messages are in the queue
+- Various improvements in the code itself (speed, reliability, debugging etc.)
 
 
 0.5.0 (2019-02-25)
