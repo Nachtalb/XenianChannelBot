@@ -390,6 +390,7 @@ class ChannelManager(BaseCommand):
                     'channel': channel,
                     'time': time_str,
                 }
+
                 messages_str = ', '.join(map(lambda msg: str(msg.message_id), posts))
                 print(f'Scheduling {messages_str} items in {channel.chat.id} at {time}')
 
@@ -759,7 +760,7 @@ class ChannelManager(BaseCommand):
                                    confirmation_requred=True, abort_callback=self.channel_actions_menu)
             ],
             [
-                self.create_button('Change schedule', callback=self.schedule_when_menu, data={'change_schedule': True}),
+                self.create_button('Reschedule', callback=self.schedule_when_menu, data={'change_schedule': True}),
             ],
             [
                 self.create_button('Back', callback=self.channel_actions_menu)
@@ -801,6 +802,7 @@ class ChannelManager(BaseCommand):
     def create_post_menu(self, recreate_message: bool = False, **kwargs):
         self.tg_state.state = self.tg_state.CREATE_SINGLE_POST
         self.tg_state.change_schedule = False
+        self.tg_state.save()
 
         buttons = [
             [
@@ -828,7 +830,7 @@ class ChannelManager(BaseCommand):
     @run_async
     def schedule_when_menu(self, button: Button=None, **kwargs):
         data = button.data if button else {}
-        self.tg_state.change_schedule = data.get('change_schedule', False)
+        self.tg_state.change_schedule = data.get('change_schedule', self.tg_state.change_schedule)
         self.tg_state.save()
 
         if not self.tg_state.change_schedule and not self.tg_current_channel.added_messages:
@@ -1105,9 +1107,11 @@ class ChannelManager(BaseCommand):
             messages_list = self.tg_current_channel.scheduled_messages.values()
             messages = list(chain.from_iterable(messages_list))
             self.tg_current_channel.scheduled_messages = {}
+            for job in job_queue.jobs():
+                if job.context.get('channel', None) == self.tg_current_channel:
+                    job.schedule_removal()
         else:
             messages = list(self.tg_current_channel.added_messages[:])
-            self.tg_current_channel.added_messages = []
 
         temp_list = []
         times = {}
@@ -1133,6 +1137,7 @@ class ChannelManager(BaseCommand):
             times[time_str] = temp_list[:]
             self.tg_current_channel.scheduled_messages[time_str] = times[time_str]
 
+        self.tg_current_channel.added_messages = []
         self.tg_current_channel.save()
 
         self.load_scheduled(channel=self.tg_current_channel, times=list(times.keys()))
@@ -1142,6 +1147,8 @@ class ChannelManager(BaseCommand):
         ), parse_mode=ParseMode.MARKDOWN)
         if self.tg_state.change_schedule:
             self.channel_actions_menu(recreate_message=True)
+            self.tg_state.change_caption_menu = False
+            self.tg_state.save()
         else:
             self.create_post_menu(recreate_message=True)
 
