@@ -440,6 +440,8 @@ class ChannelManager(BaseCommand):
                         method, include_kwargs, reaction_dict = self.prepare_send_message(
                             message, is_preview=False, bot=bot)
                         method(**include_kwargs)
+                except TimedOut:
+                    pass
                 except (Exception, BaseException):
                     pass
                 finally:
