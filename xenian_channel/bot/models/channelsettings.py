@@ -54,12 +54,13 @@ class ChannelSettings(Document):
         if isinstance(messages, TgMessage):
             messages = [messages]
 
+        messages = list(messages)
         try:
             for message in messages:
                 message.add_to_image_match(metadata={'chat_id': self.chat.id})
         except Exception as e:
             self._logger.warning(f'Could not add messages to elastic search: {messages}')
-            self._logger.warning(e)
+            self._logger.exception(e)
 
     def before_save(self):
         try:
@@ -67,8 +68,9 @@ class ChannelSettings(Document):
                 before = self._get_collection().find_one(({'_id': self.pk}))
                 newly_sent = filter(lambda item: item.message_id not in before['sent_messages'], self.sent_messages)
                 self.add_messages_to_elasitcsearch(newly_sent)
-        except Exception:
+        except Exception as e:
             self._logger.warning('Could not add messages to elastic search')
+            self._logger.exception(e)
 
     def save(self, *args, **kwargs):
         with self.save_contextmanager():

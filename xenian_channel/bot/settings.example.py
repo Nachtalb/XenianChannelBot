@@ -23,8 +23,12 @@ MODE = {
     # },
 }
 
-LOG_LEVEL = logging.DEBUG
-DEBUG = True
+if os.environ.get('XENIAN_DEBUG', False):
+    LOG_LEVEL = logging.DEBUG
+    DEBUG = True
+else:
+    LOG_LEVEL = logging.INFO
+    DEBUG = False
 
 MONGODB_CONFIGURATION = {
     'host': 'localhost',  # default: localhost
