@@ -633,7 +633,7 @@ class ChannelManager(BaseCommand):
 
         job = job_queue.run_once(
             lambda bot_, _job, **__: self.create_post_menu(recreate_message=True, *args, **kwargs),
-            when=1
+            when=2
         )
         JobsQueue(user_id=self.user.id, job=job, type=JobsQueue.types.SEND_BUTTON_MESSAGE, replaceable=True)
 
