@@ -602,10 +602,11 @@ class ChannelManager(BaseCommand):
             self.message.reply_text('This type of message is not supported.', reply_message_id=self.message.message_id)
             return
 
-        file_ids = self.get_all_file_ids_of_channel(self.tg_current_channel)
+        file_ids = list(self.get_all_file_ids_of_channel(self.tg_current_channel))
         similar_images = self.get_similar_in_channel()
-        if [id for id in self.tg_message.file_ids if id in file_ids] \
-                or [entry for entry in similar_images if entry['dist'] <= 0.8]:
+
+        if ([id for id in self.tg_message.file_ids if id in file_ids]
+             or [entry for entry in similar_images if entry['dist'] <= 0.8]):
             self.message.reply_text('Message was already sent once or is queued.',
                                     reply_message_id=self.message.message_id)
         else:
@@ -887,9 +888,9 @@ class ChannelManager(BaseCommand):
                 self.create_button('6h', callback=self.schedule_batch_size_menu, data={'delay': '6h'}),
             ],
             [
-                self.create_button('5min', callback=self.schedule_batch_size_menu, data={'delay': '5min'}),
-                self.create_button('10min', callback=self.schedule_batch_size_menu, data={'delay': '10min'}),
-                self.create_button('15min', callback=self.schedule_batch_size_menu, data={'delay': '15min'}),
+                self.create_button('12h', callback=self.schedule_batch_size_menu, data={'delay': '12h'}),
+                self.create_button('24h', callback=self.schedule_batch_size_menu, data={'delay': '24h'}),
+                self.create_button('30min', callback=self.schedule_batch_size_menu, data={'delay': '30min'}),
             ],
             [
                 self.create_button('Cancel', callback=self.create_post_menu if not self.tg_state.change_schedule else self.schedule_menu),
