@@ -1141,16 +1141,23 @@ class ChannelManager(BaseCommand):
         self.tg_current_channel.save()
 
         self.load_scheduled(channel=self.tg_current_channel, times=list(times.keys()))
-        self.message.reply_text('Messages were scheduled at:\n{}'.format(
-            '\n'.join(map(lambda item: f'`{datetime.fromtimestamp(int(item[0]))}:` {len(item[1])} messages',
-                          times.items()))
-        ), parse_mode=ParseMode.MARKDOWN)
+        chunks = self.chunks(list(map(lambda item: f'`{datetime.fromtimestamp(int(item[0]))}:` {len(item[1])} messages', times.items())),
+                             100)
+        self.bot.send_message(chat_id=self.tg_user.id,
+                              text='**Messages were scheduled at:**', parse_mode=ParseMode.MARKDOWN)
+        for chunk in chunks:
+            self.bot.send_message(chat_id=self.tg_user.id, text='\n'.join(chunk), parse_mode=ParseMode.MARKDOWN)
+
         if self.tg_state.change_schedule:
             self.channel_actions_menu(recreate_message=True)
             self.tg_state.change_caption_menu = False
             self.tg_state.save()
         else:
             self.create_post_menu(recreate_message=True)
+
+    def chunks(self, lischt, n):
+        for i in range(0, len(lischt), n):
+            yield lischt[i:i + n]
 
     # Post section
     @run_async
