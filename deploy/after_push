@@ -6,11 +6,11 @@ echo files changed: $(git diff HEAD^ HEAD --diff-filter=ACDMR --name-only | wc -
 umask 002
 
 echo "Check whether to reinstall python packages"
-git diff-tree -r --name-only --no-commit-id HEAD^ HEAD | if grep --quiet "Pipfile.lock"
+git diff-tree -r --name-only --no-commit-id HEAD^ HEAD | if grep --quiet -e ".cfg" -e 'setup.py'
 then
-  /home/web_server/.pyenv/versions/XenianChannelBot-vjGaRaxr/bin/pipenv install
+  bin/buildout
 fi
 
 echo "Restarting xenian_channel.bot.service"
-sudo /home/web_server/admin_services/restart_xenian.bot
+systemctl restart xenian_channel_bot.service
 echo "Restarted"
