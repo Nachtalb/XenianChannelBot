@@ -861,6 +861,11 @@ class ChannelManager(BaseCommand):
                 self.create_button('Midnight [24:00]', callback=self.schedule_delay_menu, data={'time': 'midnight'}),
             ],
             [
+                self.create_button('In 1h', callback=self.schedule_delay_menu, data={'time': 'now+1h'}),
+                self.create_button('In 3h', callback=self.schedule_delay_menu, data={'time': 'now+3h'}),
+                self.create_button('In 6h', callback=self.schedule_delay_menu, data={'time': 'now+6h'}),
+            ],
+            [
                 self.create_button('Back', callback=self.create_post_menu if not self.tg_state.change_schedule else self.schedule_menu),
             ]
         ]
