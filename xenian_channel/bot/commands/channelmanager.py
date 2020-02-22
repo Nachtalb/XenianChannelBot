@@ -878,6 +878,9 @@ class ChannelManager(BaseCommand):
             ]
         ]
 
+        if len(self.tg_current_channel.scheduled_messages) > 0:
+            buttons[0].append(self.create_button('Append', callback=self.schedule_delay_menu, data={'append': True}))
+
         chat_name = self.get_username_or_link(self.tg_current_channel, is_markdown=True)
         added_amount = len(self.tg_current_channel.added_messages)
         self.create_or_update_button_message(
@@ -886,13 +889,39 @@ class ChannelManager(BaseCommand):
                                f':ten_o’clock: Time is in UTC :ten_o’clock:'),
             reply_markup=self.convert_buttons(buttons), create=False, parse_mode=ParseMode.MARKDOWN)
 
+    def last_in_schedule(self, channel: ChannelSettings) -> int:
+        last = max(channel.scheduled_messages.keys())
+        return int(last) if last else None
+
+    def last_delay(self, channel: ChannelSettings) -> timedelta:
+        if len(channel.scheduled_messages) > 1:
+            occasions = list(channel.scheduled_messages.keys())[-2:]
+            return datetime.fromtimestamp(int(occasions[1])) - datetime.fromtimestamp(int(occasions[0]))
+        elif len(channel.sent_messages) > 1:
+            occasions = channel.sent_messages[-2:]
+            if not occasions[0].object or not occasions[1].object:
+                return None
+            return occasions[1].object.date - occasions[0].object.date
+        return None
+
     @run_async
-    def schedule_delay_menu(self, button: Button = None, time_str: str = None, as_before: bool = False, **kwargs):
+    def schedule_delay_menu(self, button: Button = None, time_str: str = None, as_before: bool = False,
+                            append: bool = False, **kwargs):
         self.tg_state.state = self.tg_state.SCHEDULE_ADDED_MESSAGES_DELAY
         as_before = as_before or button.data.get('as_before') if button else False
+        append = append or button.data.get('append', False)
 
         recreate = bool(time_str)
-        if not as_before:
+        if append:
+            last_occasion = self.last_in_schedule(self.tg_current_channel)
+            if not last_occasion:
+                start_time = datetime.now()
+                last_occasion = 'now'
+            else:
+                start_time = datetime.fromtimestamp(last_occasion)
+            self.tg_state.state_data[self.tg_state.SCHEDULE_ADDED_MESSAGES_WHEN] = str(last_occasion)
+            self.tg_state.save()
+        elif not as_before:
             time_str = (button.data.get('time') if button is not None else time_str) or time_str
             start_time = self.str_to_utc_datetime(time_str)
 
@@ -903,14 +932,13 @@ class ChannelManager(BaseCommand):
 
         buttons = [
             [
-                self.create_button('1h', callback=self.schedule_batch_size_menu, data={'delay': '1h'}),
-                self.create_button('3h', callback=self.schedule_batch_size_menu, data={'delay': '3h'}),
-                self.create_button('6h', callback=self.schedule_batch_size_menu, data={'delay': '6h'}),
+                self.create_button('1h', callback=self.schedule_batch_size_menu, data={'delay': '1h', 'append': append}),
+                self.create_button('3h', callback=self.schedule_batch_size_menu, data={'delay': '3h', 'append': append}),
+                self.create_button('6h', callback=self.schedule_batch_size_menu, data={'delay': '6h', 'append': append}),
             ],
             [
-                self.create_button('12h', callback=self.schedule_batch_size_menu, data={'delay': '12h'}),
-                self.create_button('24h', callback=self.schedule_batch_size_menu, data={'delay': '24h'}),
-                self.create_button('30min', callback=self.schedule_batch_size_menu, data={'delay': '30min'}),
+                self.create_button('12h', callback=self.schedule_batch_size_menu, data={'delay': '12h', 'append': append}),
+                self.create_button('24h', callback=self.schedule_batch_size_menu, data={'delay': '24h', 'append': append}),
             ],
             [
                 self.create_button('Cancel', callback=self.create_post_menu if not self.tg_state.change_schedule else self.schedule_menu),
@@ -918,18 +946,21 @@ class ChannelManager(BaseCommand):
             ]
         ]
 
-        last_time = self.tg_state.state_data.get(self.tg_state.SCHEDULE_ADDED_MESSAGES_DELAY)
-        if last_time:
+        last_delay = self.last_delay(self.tg_current_channel) or self.tg_state.state_data.get(self.tg_state.SCHEDULE_ADDED_MESSAGES_DELAY)
+
+        if last_delay:
             buttons = [[
-                self.create_button(f'As last time [{last_time}]', self.schedule_batch_size_menu,
-                                   data={'delay': last_time})
+                self.create_button(f'As last time [{last_delay}]', self.schedule_batch_size_menu,
+                                   data={'delay': str(last_delay), 'append': append}),
             ]] + buttons
 
         chat_name = self.get_username_or_link(self.tg_current_channel, is_markdown=True)
         added_amount = len(self.tg_current_channel.added_messages if not self.tg_state.change_schedule else self.tg_current_channel.scheduled_messages)
         self.create_or_update_button_message(
             text=f'Channel: {chat_name} with `{added_amount}` posts in queue\n- Starttime: `{start_time}`\n\n'
-            f'How big should the delay be between each batch? Again hit a button or tell me via text.',
+            + (f'Last delay was: `{last_delay}`\n\n' if last_delay else '')
+            + (f'You have chosen to append, thus the actual start time will be determined in this step\n\n' if append else '')
+            + f'How big should the delay be between each batch? Again hit a button or tell me via text.',
             reply_markup=self.convert_buttons(buttons), create=recreate, parse_mode=ParseMode.MARKDOWN)
 
     @run_async
@@ -954,7 +985,17 @@ class ChannelManager(BaseCommand):
             time_delta_str = str(timedelta(
                 seconds=pytimeparse.parse(self.tg_state.state_data[self.tg_state.SCHEDULE_ADDED_MESSAGES_DELAY])))
 
-        start_time = self.str_to_utc_datetime(self.tg_state.state_data[self.tg_state.SCHEDULE_ADDED_MESSAGES_WHEN])
+        if button.data.get('append', False):
+            last_occasion = self.last_in_schedule(self.tg_current_channel)
+            start_time = datetime.fromtimestamp(last_occasion) if last_occasion else datetime.now()
+            delay = timedelta(seconds=pytimeparse.parse(self.tg_state.state_data[self.tg_state.SCHEDULE_ADDED_MESSAGES_DELAY]))
+
+            start_time = start_time + delay
+
+            self.tg_state.state_data[self.tg_state.SCHEDULE_ADDED_MESSAGES_WHEN] = str(start_time)
+            self.tg_state.save()
+        else:
+            start_time = self.str_to_utc_datetime(self.tg_state.state_data[self.tg_state.SCHEDULE_ADDED_MESSAGES_WHEN])
 
         buttons = [
             [
