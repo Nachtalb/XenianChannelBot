@@ -644,8 +644,7 @@ class ChannelManager(BaseCommand):
             if additional_buttons:
                 include_kwargs['reply_markup'].inline_keyboard.extend(additional_buttons)
 
-            method(chat_id=self.chat.id, disable_notification=True, reply_message_id=self.message.message_id,
-                   **include_kwargs)
+            method(chat_id=self.chat.id, reply_message_id=self.message.message_id, **include_kwargs)
 
         job = job_queue.run_once(
             lambda bot_, _job, **__: self.create_post_menu(recreate_message=True, *args, **kwargs),
