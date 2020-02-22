@@ -412,6 +412,7 @@ class ChannelManager(BaseCommand):
         del channel.scheduled_messages[time_str]
         channel.save()
 
+        sent_message = None
         for message in messages:
             method, include_kwargs, reaction_dict = self.prepare_send_message(message, is_preview=False, bot=bot,
                                                                               channel_settings=channel)
@@ -433,6 +434,7 @@ class ChannelManager(BaseCommand):
                         self.sent_file_id_cache[channel] = list(new_tg_message.file_ids)
 
                     channel.sent_messages.append(new_tg_message)
+                sent_message = new_message
             except TimedOut:
                 pass
             except (Exception, BaseException):
@@ -440,7 +442,7 @@ class ChannelManager(BaseCommand):
                     for message in filter(lambda msg: msg not in channel.sent_messages, messages):
                         method, include_kwargs, reaction_dict = self.prepare_send_message(
                             message, is_preview=False, bot=bot)
-                        method(**include_kwargs)
+                        sent_message = method(**include_kwargs)
                 except TimedOut:
                     pass
                 except (Exception, BaseException):
@@ -451,16 +453,20 @@ class ChannelManager(BaseCommand):
                                      parse_mode=ParseMode.MARKDOWN)
                     return
 
+        batch_message = f'Batch schduled for {channel_link} at `{time}` is complete'
+        if sent_message:
+            if not isinstance(sent_message, Message):
+                sent_message = sent_message.result()
+            batch_message += f' > [message]({sent_message.link})'
+
         left = len(ChannelSettings.objects(id=channel.id).first().scheduled_messages)
         if not left:
             bot.send_message(chat_id=channel.user.id,
-                             text=emoji.emojize(f':warning: No batches left for {channel_link}\n'
-                                                f'Batch schduled for {channel_link} at `{time}` is complete\n'),
+                             text=emoji.emojize(f':warning: No batches left for {channel_link}\n' + batch_message),
                              parse_mode=ParseMode.MARKDOWN)
         else:
             bot.send_message(chat_id=channel.user.id,
-                             text=f'Batch scheduled for {channel_link} at `{time}` is complete.\n'
-                                  f'There are `{left}` scheduled batches left.',
+                             text=batch_message + f'\nThere are `{left}` scheduled batches left.',
                              disable_notification=True,
                              parse_mode=ParseMode.MARKDOWN)
 
