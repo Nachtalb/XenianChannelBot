@@ -461,16 +461,15 @@ class ChannelManager(BaseCommand):
 
         left = len(ChannelSettings.objects(id=channel.id).first().scheduled_messages)
         if not left:
-            bot.send_message(chat_id=channel.user.id,
-                             text=emoji.emojize(f':warning: No batches left for {channel_link}\n' + batch_message),
-                             disable_web_page_preview=False,
-                             parse_mode=ParseMode.MARKDOWN)
+            text = emoji.emojize(f':warning: No batches left for {channel_link}\n' + batch_message)
         else:
-            bot.send_message(chat_id=channel.user.id,
-                             text=batch_message + f'\nThere are `{left}` scheduled batches left.',
-                             disable_web_page_preview=False,
-                             disable_notification=True,
-                             parse_mode=ParseMode.MARKDOWN)
+            text = batch_message + f'\nThere are `{left}` scheduled batches left.'
+
+        bot.send_message(chat_id=channel.user.id,
+                         text=text,
+                         disable_web_page_preview=False,
+                         disable_notification=True,
+                         parse_mode=ParseMode.MARKDOWN)
 
     def str_to_utc_datetime(self, time_string) -> datetime:
         cal = parsedatetime.Calendar()
