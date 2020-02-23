@@ -435,7 +435,8 @@ class ChannelManager(BaseCommand):
                         self.sent_file_id_cache[channel] = list(new_tg_message.file_ids)
 
                     channel.sent_messages.append(new_tg_message)
-                sent_message = new_message
+                if not sent_message:
+                    sent_message = new_message
             except TimedOut:
                 pass
             except (Exception, BaseException):
@@ -443,7 +444,8 @@ class ChannelManager(BaseCommand):
                     for message in filter(lambda msg: msg not in channel.sent_messages, messages):
                         method, include_kwargs, reaction_dict = self.prepare_send_message(
                             message, is_preview=False, bot=bot)
-                        sent_message = method(**include_kwargs)
+                        if not sent_message:
+                            sent_message = method(**include_kwargs)
                 except TimedOut:
                     pass
                 except (Exception, BaseException):
@@ -458,7 +460,8 @@ class ChannelManager(BaseCommand):
         if sent_message:
             if not isinstance(sent_message, Message):
                 sent_message = sent_message.result()
-            batch_message += f' > [message]({sent_message.link})'
+            if sent_message.link:
+                batch_message += f' > [message]({sent_message.link})'
 
         left = len(ChannelSettings.objects(id=channel.id).first().scheduled_messages)
         if not left:
