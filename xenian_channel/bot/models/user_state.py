@@ -5,9 +5,10 @@ from mongoengine import Document, NULLIFY, ReferenceField, StringField, DictFiel
 from xenian_channel.bot.models import ChannelSettings
 from xenian_channel.bot.models.tg_user import TgUser
 
-__all__ = ['UserState']
+__all__ = ['UserState', 'APPEND_SCHEDULE', 'EXTEND_SCHEDULE']
 
 APPEND_SCHEDULE = 'append schedule'
+EXTEND_SCHEDULE = 'extend schedule'
 
 class UserState(Document):
     IDLE = 'idle'

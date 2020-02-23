@@ -17,7 +17,8 @@ from telegram.ext import CallbackQueryHandler, Job, MessageHandler, run_async
 from telegram.parsemode import ParseMode
 
 from xenian_channel.bot import job_queue
-from xenian_channel.bot.models import Button, ChannelSettings, TgChat, TgMessage, TgUser, UserState, APPEND_SCHEDULE
+from xenian_channel.bot.models import (Button, ChannelSettings, TgChat, TgMessage, TgUser, UserState,
+                                       APPEND_SCHEDULE, EXTEND_SCHEDULE)
 from xenian_channel.bot.settings import ADMINS, LOG_LEVEL
 from xenian_channel.bot.utils import TelegramProgressBar, get_self
 from xenian_channel.bot.utils.models import resolve_dbref
@@ -879,8 +880,11 @@ class ChannelManager(BaseCommand):
             ]
         ]
 
-        if len(self.tg_current_channel.scheduled_messages) > 0:
-            buttons[0].append(self.create_button('Append', callback=self.schedule_delay_menu, data={'append': True}))
+        if not self.tg_state.change_schedule and len(self.tg_current_channel.scheduled_messages) > 0:
+            buttons.insert(1, [
+                self.create_button('Append', callback=self.schedule_delay_menu, data={'append': True}),
+                self.create_button('Extend', callback=self.schedule_delay_menu, data={'extend': True})
+            ])
 
         chat_name = self.get_username_or_link(self.tg_current_channel, is_markdown=True)
         added_amount = len(self.tg_current_channel.added_messages)
@@ -893,6 +897,10 @@ class ChannelManager(BaseCommand):
     def last_in_schedule(self, channel: ChannelSettings) -> int:
         last = max(channel.scheduled_messages.keys())
         return int(last) if last else None
+
+    def first_in_schedule(self, channel: ChannelSettings) -> int:
+        first = min(channel.scheduled_messages.keys())
+        return int(first) if first else None
 
     def last_delay(self, channel: ChannelSettings) -> timedelta:
         if len(channel.scheduled_messages) > 1:
@@ -907,14 +915,24 @@ class ChannelManager(BaseCommand):
 
     @run_async
     def schedule_delay_menu(self, button: Button = None, time_str: str = None, as_before: bool = False,
-                            append: bool = False, **kwargs):
+                            append: bool = False, extend: bool = False, **kwargs):
         self.tg_state.state = self.tg_state.SCHEDULE_ADDED_MESSAGES_DELAY
         as_before = as_before or button.data.get('as_before') if button else False
-        append = append or button.data.get('append', False)
+        append = append or getattr(button, 'data', {}).get('append', False)
 
         recreate = bool(time_str)
         self.tg_state.state_data[APPEND_SCHEDULE] = False
-        if append:
+        self.tg_state.state_data[EXTEND_SCHEDULE] = False
+        if extend or getattr(button, 'data', {}).get('extend', False):
+            self.tg_state.state_data[EXTEND_SCHEDULE] = True
+            first = self.first_in_schedule(self.tg_current_channel)
+            if first:
+                start_time = datetime.fromtimestamp(first)
+                time_str = str(start_time)
+            else:
+                start_time, time_str = datetime.now(), 'now'
+            self.tg_state.state_data[self.tg_state.SCHEDULE_ADDED_MESSAGES_WHEN] = time_str
+        elif append:
             self.tg_state.state_data[APPEND_SCHEDULE] = True
             start_time = '-'
         elif not as_before:
@@ -1162,15 +1180,21 @@ class ChannelManager(BaseCommand):
         delay = timedelta(seconds=pytimeparse.parse(delay)) or timedelta(hours=1)
         batch_size = int(batch_size) if batch_size is not None and batch_size.isdigit() else 10
 
-        if self.tg_state.change_schedule:
-            messages_list = self.tg_current_channel.scheduled_messages.values()
-            messages = list(chain.from_iterable(messages_list))
-            self.tg_current_channel.scheduled_messages = {}
+        extend = self.tg_state.state_data[EXTEND_SCHEDULE]
+        reschedule = self.tg_state.change_schedule
+
+        messages = list(self.tg_current_channel.added_messages[:])
+        scheduled_messages = list(chain.from_iterable(self.tg_current_channel.scheduled_messages.values()))
+        if extend:
+            messages += scheduled_messages
+        elif reschedule:
+            messages = scheduled_messages
+
+        if extend or reschedule:
             for job in job_queue.jobs():
                 if job.context.get('channel', None) == self.tg_current_channel:
                     job.schedule_removal()
-        else:
-            messages = list(self.tg_current_channel.added_messages[:])
+            self.tg_current_channel.scheduled_messages = {}
 
         temp_list = []
         times = {}
