@@ -4,7 +4,11 @@ Changelog
 0.7.1 (unreleased)
 ------------------
 
-- Tell when the next batch is scheduled for
+- Improve schedulung speed significantly
+- Improve logging of scheduled messages
+- Improve scheduled messages list
+- Send link to first instead if last post from posted batch in completion message
+- Tell when the next batch is sent in the completion message
 
 
 0.7.0 (2020-02-23)
