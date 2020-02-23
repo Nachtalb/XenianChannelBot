@@ -394,7 +394,7 @@ class ChannelManager(BaseCommand):
                 }
 
                 messages_str = ', '.join(map(lambda msg: str(msg.message_id), posts))
-                print(f'Scheduling {messages_str} items in {channel.chat.id} at {time}')
+                print(f'Scheduling "{messages_str}" items in "{channel}" at "{time}"')
 
                 job_queue.run_once(self.send_scheduled_message, when=time, context=context)
 

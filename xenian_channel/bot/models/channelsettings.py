@@ -37,6 +37,9 @@ class ChannelSettings(Document):
     def __repr__(self):
         return f'{str(self.user)} - {str(self.chat)}'
 
+    def __str__(self):
+        return self.__repr__()
+
     @contextmanager
     def save_contextmanager(self, *args, **kwargs):
         try:
