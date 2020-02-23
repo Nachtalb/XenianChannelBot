@@ -4,7 +4,8 @@ Changelog
 0.6.1 (unreleased)
 ------------------
 
-- Nothing changed yet.
+- Add append and extend to scheduling messages
+- Add link to message in batch completion message
 
 
 0.6.0 (2020-02-21)
