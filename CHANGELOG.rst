@@ -4,7 +4,7 @@ Changelog
 0.7.1 (unreleased)
 ------------------
 
-- Nothing changed yet.
+- Tell when the next batch is scheduled for
 
 
 0.7.0 (2020-02-23)

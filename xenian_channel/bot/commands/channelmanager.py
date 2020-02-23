@@ -464,7 +464,8 @@ class ChannelManager(BaseCommand):
         if not left:
             text = emoji.emojize(f':warning: No batches left for {channel_link}\n' + batch_message)
         else:
-            text = batch_message + f'\nThere are `{left}` scheduled batches left.'
+            next_batch = datetime.fromtimestamp(self.first_in_schedule(channel))
+            text = batch_message + f'\nThere are `{left}` scheduled batches left. Next batch is at `{next_batch}`'
 
         bot.send_message(chat_id=channel.user.id,
                          text=text,
