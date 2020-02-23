@@ -1214,29 +1214,15 @@ class ChannelManager(BaseCommand):
         if 'button' in kwargs and 'randomize' in kwargs['button'].data:
             random.shuffle(messages)
 
-        for index, message in enumerate(messages):
-            temp_list.append(message)
-
-            if (index + 1) % batch_size == 0:
-                time = when + (delay * hours_counter)
-                time_str = str(int(time.timestamp()))
-                times[time_str] = temp_list[:]
-                self.tg_current_channel.scheduled_messages[time_str] = times[time_str]
-                hours_counter += 1
-                temp_list = []
-
-        if temp_list:
-            time = when + (delay * hours_counter)
-            time_str = str(int(time.timestamp()))
-            times[time_str] = temp_list[:]
-            self.tg_current_channel.scheduled_messages[time_str] = times[time_str]
+        chunks = self.chunks(messages, batch_size)
+        when_timestamp = int(when.timestamp())
+        delay_seconds = int(delay.total_seconds())
+        schedule = dict(map(lambda tpl: (str(when_timestamp + (delay_seconds * tpl[0])), tpl[1]), enumerate(chunks)))
+        self.tg_current_channel.scheduled_messages.update(schedule)
 
         self.tg_current_channel.added_messages = []
         self.tg_current_channel.save()
 
-        self.create_or_update_button_message(
-            text=f'Scheduling `{len(self.tg_current_channel.scheduled_messages)}` messages...',
-            create=True)
         self.load_scheduled(channel=self.tg_current_channel, times=list(times.keys()))
         self.send_scheduled_callback_query(False)
 
