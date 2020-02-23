@@ -463,10 +463,12 @@ class ChannelManager(BaseCommand):
         if not left:
             bot.send_message(chat_id=channel.user.id,
                              text=emoji.emojize(f':warning: No batches left for {channel_link}\n' + batch_message),
+                             disable_web_page_preview=False,
                              parse_mode=ParseMode.MARKDOWN)
         else:
             bot.send_message(chat_id=channel.user.id,
                              text=batch_message + f'\nThere are `{left}` scheduled batches left.',
+                             disable_web_page_preview=False,
                              disable_notification=True,
                              parse_mode=ParseMode.MARKDOWN)
 
