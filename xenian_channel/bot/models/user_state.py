@@ -7,6 +7,7 @@ from xenian_channel.bot.models.tg_user import TgUser
 
 __all__ = ['UserState']
 
+APPEND_SCHEDULE = 'append schedule'
 
 class UserState(Document):
     IDLE = 'idle'
