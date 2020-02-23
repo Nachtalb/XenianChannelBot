@@ -1156,16 +1156,23 @@ class ChannelManager(BaseCommand):
         self.list_channels_menu()
 
     @run_async
-    def send_scheduled_callback_query(self, **kwargs):
-        messages = self.tg_current_channel.scheduled_messages
+    def send_scheduled_callback_query(self, schedule_menu_next: bool = True, **kwargs):
+        messages = self.tg_current_channel.scheduled_messages.items()
         if not messages:
             self.message.reply_text('No messages scheduled')
         else:
-            self.message.reply_text('Messages were scheduled at:\n{}'.format(
-                '\n'.join(map(lambda item: f'`{datetime.fromtimestamp(int(item[0]))}:` {len(item[1])} messages',
-                              messages.items()))
-            ), parse_mode=ParseMode.MARKDOWN)
-        self.schedule_menu(recreate_message=True)
+            chunks = self.chunks(
+                map(lambda item: f'`{datetime.fromtimestamp(int(item[0]))}:` {len(item[1])} messages', messages),
+                100)
+
+            channel_link = self.get_username_or_link(self.tg_current_channel, is_markdown=True)
+            self.bot.send_message(chat_id=self.tg_user.id, text=f'**Messages for {channel_link} were scheduled at:**',
+                                  parse_mode=ParseMode.MARKDOWN)
+            for chunk in chunks:
+                self.bot.send_message(chat_id=self.tg_user.id, text='\n'.join(chunk), parse_mode=ParseMode.MARKDOWN)
+
+        if schedule_menu_next:
+            self.schedule_menu(recreate_message=True)
 
     @run_async
     def clear_scheduled_callback_query(self, **kwargs):
@@ -1227,17 +1234,13 @@ class ChannelManager(BaseCommand):
         self.tg_current_channel.added_messages = []
         self.tg_current_channel.save()
 
+        self.create_or_update_button_message(
+            text=f'Scheduling `{len(self.tg_current_channel.scheduled_messages)}` messages...',
+            create=True)
         self.load_scheduled(channel=self.tg_current_channel, times=list(times.keys()))
-        chunks = self.chunks(list(map(lambda item: f'`{datetime.fromtimestamp(int(item[0]))}:` {len(item[1])} messages', times.items())),
-                             100)
+        self.send_scheduled_callback_query(False)
 
-        channel_link = self.get_username_or_link(self.tg_current_channel, is_markdown=True)
-        self.bot.send_message(chat_id=self.tg_user.id,
-                              text=f'**Messages for {channel_link} were scheduled at:**', parse_mode=ParseMode.MARKDOWN)
-        for chunk in chunks:
-            self.bot.send_message(chat_id=self.tg_user.id, text='\n'.join(chunk), parse_mode=ParseMode.MARKDOWN)
-
-        if self.tg_state.change_schedule:
+        if reschedule:
             self.channel_actions_menu(recreate_message=True)
             self.tg_state.change_caption_menu = False
             self.tg_state.save()
@@ -1245,6 +1248,8 @@ class ChannelManager(BaseCommand):
             self.create_post_menu(recreate_message=True)
 
     def chunks(self, lischt, n):
+        if not hasattr(lischt, '__len__'):
+            lischt = list(lischt)
         for i in range(0, len(lischt), n):
             yield lischt[i:i + n]
 
