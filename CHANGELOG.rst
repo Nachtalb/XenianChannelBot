@@ -1,7 +1,7 @@
 Changelog
 =========
 
-0.6.1 (unreleased)
+0.7.0 (2020-02-23)
 ------------------
 
 - Add append and extend to scheduling messages
