@@ -889,9 +889,13 @@ class ChannelManager(BaseCommand):
                 self.create_button('Append', callback=self.schedule_delay_menu, data={'append': True}),
                 self.create_button('Extend', callback=self.schedule_delay_menu, data={'extend': True})
             ])
+        elif self.tg_state.change_schedule:
+            buttons.insert(1, [
+                self.create_button('Skip', callback=self.schedule_delay_menu, data={'keep': True}),
+            ])
 
         chat_name = self.get_username_or_link(self.tg_current_channel, is_markdown=True)
-        added_amount = len(self.tg_current_channel.added_messages)
+        added_amount = len(self.tg_current_channel.scheduled_messages) if self.tg_state.change_schedule else len(self.tg_current_channel.added_messages)
         self.create_or_update_button_message(
             text=emoji.emojize(f'Channel: {chat_name} with `{added_amount}` posts in queue\nWhen do you want to start '
                                f'sending messages? Either hit a button or send me a date / time.\n\n'
@@ -919,16 +923,17 @@ class ChannelManager(BaseCommand):
 
     @run_async
     def schedule_delay_menu(self, button: Button = None, time_str: str = None, as_before: bool = False,
-                            append: bool = False, extend: bool = False, **kwargs):
+                            append: bool = False, extend: bool = False, keep: bool = False, **kwargs):
         self.tg_state.state = self.tg_state.SCHEDULE_ADDED_MESSAGES_DELAY
         as_before = as_before or button.data.get('as_before') if button else False
         append = append or getattr(button, 'data', {}).get('append', False)
+        extend = extend or getattr(button, 'data', {}).get('extend', False)
+        keep = keep or getattr(button, 'data', {}).get('keep', False)
 
         recreate = bool(time_str)
-        self.tg_state.state_data[APPEND_SCHEDULE] = False
-        self.tg_state.state_data[EXTEND_SCHEDULE] = False
-        if extend or getattr(button, 'data', {}).get('extend', False):
-            self.tg_state.state_data[EXTEND_SCHEDULE] = True
+        self.tg_state.state_data[APPEND_SCHEDULE] = append
+        self.tg_state.state_data[EXTEND_SCHEDULE] = extend
+        if extend or keep:
             first = self.first_in_schedule(self.tg_current_channel)
             if first:
                 start_time = datetime.fromtimestamp(first)
@@ -937,7 +942,6 @@ class ChannelManager(BaseCommand):
                 start_time, time_str = datetime.now(), 'now'
             self.tg_state.state_data[self.tg_state.SCHEDULE_ADDED_MESSAGES_WHEN] = time_str
         elif append:
-            self.tg_state.state_data[APPEND_SCHEDULE] = True
             start_time = '-'
         elif not as_before:
             self.tg_state.state_data['append'] = True
