@@ -574,10 +574,6 @@ class ChannelManager(BaseCommand):
     def add_channel_post_message_handler(self):
         channel = ChannelSettings.objects(chat=self.tg_message.chat).first()
 
-        blacklist = channel.sent_messages + list(chain.from_iterable(map(dict.values, channel.queued_messages)))
-        if self.tg_message in blacklist:
-            return
-
         self.tg_message.save()
         channel.sent_messages.append(self.tg_message)
         channel.save()
