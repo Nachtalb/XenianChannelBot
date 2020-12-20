@@ -15,6 +15,7 @@ from telegram import Bot, Chat, InlineKeyboardButton, InlineKeyboardMarkup, Mess
 from telegram.error import BadRequest, TimedOut
 from telegram.ext import CallbackQueryHandler, Job, MessageHandler, run_async
 from telegram.parsemode import ParseMode
+from telegram.utils.promise import Promise
 
 from xenian_channel.bot import job_queue
 from xenian_channel.bot.models import (Button, ChannelSettings, TgChat, TgMessage, TgUser, UserState,
@@ -299,7 +300,8 @@ class ChannelManager(BaseCommand):
         if method == bot.send_message:
             keywords['text'] += f'\n\n{channel_settings.caption}'
         else:
-            keywords['caption'] = channel_settings.caption
+            keywords['caption'] = ((real_message.caption_markdown or '') + '\n\n' + channel_settings.caption).strip()
+        keywords['parse_mode'] = ParseMode.MARKDOWN
 
         if is_preview:
             buttons.extend([[
@@ -681,7 +683,7 @@ class ChannelManager(BaseCommand):
             self.message.reply_text('You have to send me some text or hit cancel.')
             return
 
-        self.tg_current_channel.caption = self.message.text
+        self.tg_current_channel.caption = self.message.text_markdown
         self.tg_current_channel.save()
         self.change_caption_menu()
 
@@ -1111,12 +1113,13 @@ class ChannelManager(BaseCommand):
 
     @run_async
     def change_caption_menu(self, **kwargs):
-        chat_name = self.get_username_or_link(self.tg_current_channel)
+        chat_name = self.get_username_or_link(self.tg_current_channel, is_markdown=True)
         buttons = self.convert_buttons([[self.create_button('Finished', callback=self.settings_menu)]])
 
         self.create_or_update_button_message(
             f'Channel: {chat_name}\nYour default caption at the moment is:\n{self.tg_current_channel.caption or "Empty"}',
-            reply_markup=buttons)
+             reply_markup=buttons,
+             parse_mode=ParseMode.MARKDOWN)
         self.tg_state.state = self.tg_state.CHANGE_DEFAULT_CAPTION
 
     @run_async
@@ -1280,6 +1283,8 @@ class ChannelManager(BaseCommand):
                 method, include_kwargs, reaction_dict = self.prepare_send_message(stored_message, is_preview=preview)
 
                 new_message = method(chat_id=send_to.id, **include_kwargs)
+                if isinstance(new_message, Promise):
+                    new_message = new_message.result()
                 if not preview:
                     new_tg_message = TgMessage(new_message, reactions=reaction_dict)
                     new_tg_message.save()
