@@ -1223,7 +1223,8 @@ class ChannelManager(BaseCommand):
         schedule = dict(map(lambda tpl: (str(when_timestamp + (delay_seconds * tpl[0])), tpl[1]), enumerate(chunks)))
         self.tg_current_channel.scheduled_messages.update(schedule)
 
-        self.tg_current_channel.added_messages = []
+        if not reschedule:
+            self.tg_current_channel.added_messages = []
         self.tg_current_channel.save()
 
         self.load_scheduled(channel=self.tg_current_channel, times=list(times.keys()))
