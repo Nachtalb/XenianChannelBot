@@ -294,6 +294,7 @@ class ChannelManager(BaseCommand):
         real_message = message.to_object(bot)
         method, keywords = self.get_correct_send_message(real_message, bot=bot)
         channel_settings = channel_settings or self.tg_current_channel
+        channel_settings.reload()
 
         buttons = []
 
