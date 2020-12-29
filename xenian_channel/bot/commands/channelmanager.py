@@ -422,7 +422,7 @@ class ChannelManager(BaseCommand):
                                                                               channel_settings=channel)
 
             try:
-                new_message = method(chat_id=channel.chat.id, **include_kwargs)
+                new_message = method(chat_id=channel.chat.id, **include_kwargs).result()
                 if not isinstance(new_message, Message):
                     new_message = new_message.result()
                 new_tg_message = TgMessage(new_message, reactions=reaction_dict)
@@ -448,7 +448,7 @@ class ChannelManager(BaseCommand):
                         method, include_kwargs, reaction_dict = self.prepare_send_message(
                             message, is_preview=False, bot=bot)
                         if not sent_message:
-                            sent_message = method(**include_kwargs)
+                            sent_message = method(**include_kwargs).result()
                 except TimedOut:
                     pass
                 except (Exception, BaseException):
@@ -1284,7 +1284,7 @@ class ChannelManager(BaseCommand):
             try:
                 method, include_kwargs, reaction_dict = self.prepare_send_message(stored_message, is_preview=preview)
 
-                new_message = method(chat_id=send_to.id, **include_kwargs)
+                new_message = method(chat_id=send_to.id, **include_kwargs).result()
                 if isinstance(new_message, Promise):
                     new_message = new_message.result()
                 if not preview:

@@ -1,6 +1,7 @@
 import logging
 import os
 import sys
+import functools
 from threading import Thread
 
 from telegram import Bot, TelegramError, Update
@@ -14,6 +15,15 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 logger = logging.getLogger(__name__)
 
 
+def decorate_all_send_methods(decorator):
+    def decorate(cls):
+        for attr in filter(lambda m: m.startswith('send_'), dir(cls)):
+            setattr(cls, attr, decorator(getattr(cls, attr)))
+        return cls
+    return decorate
+
+
+@decorate_all_send_methods(messagequeue.queuedmessage)
 class MQBot(Bot):
     """subclass of Bot which delegates send method handling to MQ"""
 
@@ -29,12 +39,6 @@ class MQBot(Bot):
         except:
             pass
         super(MQBot, self).__del__()
-
-    @messagequeue.queuedmessage
-    def send_message(self, *args, **kwargs):
-        """Wrapped method would accept new `queued` and `isgroup`
-        OPTIONAL arguments"""
-        return super(MQBot, self).send_message(*args, **kwargs)
 
 
 def error(bot: Bot, update: Update, error: TelegramError):
