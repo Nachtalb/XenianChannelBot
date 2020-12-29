@@ -95,12 +95,16 @@ class TgMessage(TelegramDocument):
 
         return self._bot.get_file(file_id=file_id)
 
-    def find_similar(self, bot: Bot = None) -> list:
+    def find_similar(self, chat_id: int = None, bot: Bot = None) -> list:
         file = self._get_file_for_image_search(bot)
         if not file:
             return []
         try:
-            return image_match_ses.search_image(file.file_path)
+            filter = None
+            if chat_id:
+                filter = {'term': {'metadata.chat_id': chat_id}}
+
+            return image_match_ses.search_image(file.file_path, pre_filter=filter)
         except (ConnectionError, NewConnectionError, NotFoundError):
             return []
 
@@ -111,7 +115,10 @@ class TgMessage(TelegramDocument):
             if result['dist'] == 0.0:
                 return result
 
-    def add_to_image_match(self, bot: Bot = None, metadata: dict = None):
+    def add_to_image_match(self, chat_id: int = None, bot: Bot = None):
+        metadata = None
+        if chat_id:
+            metadata = {'chat_id': chat_id}
         file = self._get_file_for_image_search(bot)
         if not file:
             return

@@ -294,7 +294,8 @@ class ChannelManager(BaseCommand):
         real_message = message.to_object(bot)
         method, keywords = self.get_correct_send_message(real_message, bot=bot)
         channel_settings = channel_settings or self.tg_current_channel
-        channel_settings.reload()
+        if not is_preview:
+            channel_settings.reload('caption', 'reactions')
 
         buttons = []
 
@@ -366,15 +367,14 @@ class ChannelManager(BaseCommand):
     def get_similar_in_channel(self, min_similarity: float or int = None, message: TgMessage = None,
                                channel: TgChat = None, exclude_own: bool = False) -> list:
         message = message or self.tg_message
-        channel = channel or self.tg_current_channel.chat
         min_similarity = min_similarity or 1
 
         results = []
-        for entry in message.find_similar(self.bot):
-            if 'chat_id' not in (entry['metadata'] or {}) or (exclude_own and entry['dist'] == 0.0):
+        for entry in message.find_similar(self.tg_current_channel.chat.id, self.bot):
+            if exclude_own and entry['dist'] == 0.0:
                 continue
 
-            if entry['dist'] <= min_similarity and entry['metadata']['chat_id'] == channel.id:
+            if entry['dist'] <= min_similarity:
                 results.append(entry)
         return results
 
@@ -624,10 +624,15 @@ class ChannelManager(BaseCommand):
             return
 
         file_ids = list(self.get_all_file_ids_of_channel(self.tg_current_channel))
-        similar_images = self.get_similar_in_channel()
+        already_queued = False
+        if [id for id in self.tg_message.file_ids if id in file_ids]:
+            already_queued = True
 
-        if ([id for id in self.tg_message.file_ids if id in file_ids]
-             or [entry for entry in similar_images if entry['dist'] <= 0.8]):
+        similar_images = self.get_similar_in_channel()
+        if not already_queued and [entry for entry in similar_images if entry['dist'] <= 0.8]:
+            already_queued = True
+
+        if already_queued:
             self.message.reply_text('Message was already sent once or is queued.',
                                     reply_message_id=self.message.message_id)
         else:
@@ -642,8 +647,10 @@ class ChannelManager(BaseCommand):
                 additional_buttons.append([self.convert_button(self.create_button(text=text, prefix='nothing'))])
 
             self.tg_message.save()
-            self.tg_current_channel.added_messages.append(self.tg_message)
-            self.tg_current_channel.save()
+            collection = self.tg_current_channel._get_collection()
+            collection.update({'_id': self.tg_current_channel.id},
+                              {'$push': {'added_messages': self.tg_message.id}})
+
 
             method, include_kwargs, reaction_dict = self.prepare_send_message(self.tg_message, is_preview=True)
             if additional_buttons:
@@ -842,6 +849,7 @@ class ChannelManager(BaseCommand):
         ]
 
         chat_name = self.get_username_or_link(self.tg_current_channel, is_markdown=True)
+        self.tg_current_channel.reload('added_messages')
         added_amount = len(self.tg_current_channel.added_messages)
         self.create_or_update_button_message(
             text=f'Channel: {chat_name}\nSend me messages to be sent to the channel\n'
@@ -1354,7 +1362,7 @@ class ChannelManager(BaseCommand):
 
         for message in progress_bar(self.tg_current_channel.import_messages_queue[uuid][:]):
             try:
-                message.add_to_image_match(self.bot, metadata={'chat_id': self.tg_current_channel.chat.id})
+                message.add_to_image_match(self.tg_current_channel.chat.id, self.bot)
                 self.tg_current_channel.import_messages_queue[uuid].remove(message)
                 self.tg_current_channel.save()
             except (BaseException, Exception) as error:

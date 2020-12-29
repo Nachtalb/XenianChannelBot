@@ -60,7 +60,7 @@ class ChannelSettings(Document):
         messages = list(messages)
         try:
             for message in messages:
-                message.add_to_image_match(metadata={'chat_id': self.chat.id})
+                message.add_to_image_match(self.chat.id)
         except Exception as e:
             self._logger.warning(f'Could not add messages to elastic search: {messages}')
             self._logger.exception(e)
