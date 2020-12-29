@@ -301,7 +301,7 @@ class ChannelManager(BaseCommand):
         if method == bot.send_message:
             keywords['text'] += f'\n\n{channel_settings.caption}'
         else:
-            keywords['caption'] = ((real_message.caption_markdown or '') + '\n\n' + channel_settings.caption).strip()
+            keywords['caption'] = ((real_message.caption_markdown or '') + '\n\n' + (channel_settings.caption or '')).strip()
         keywords['parse_mode'] = ParseMode.MARKDOWN
 
         if is_preview:
